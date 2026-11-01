@@ -38,6 +38,17 @@ def test_fluxo_completo_e_reexecucao_consistente(tmp_path):
     conn.close()
 
 
+def test_janela_terminando_em_sobra_de_um_dia_funciona(tmp_path):
+    """Regressão de 01/11/2026: a janela gerava um 6º bloco de um dia e o SGS recusava
+    com HTTP 400, derrubando a execução inteira — inclusive os 5 anos já coletados."""
+    res = _run(tmp_path, BusinessDaySession(), today=date(2026, 11, 1))
+    assert res[0].status == "success", res[0].message
+    conn = db.connect(tmp_path / "t.db")
+    assert _one(conn, "SELECT MAX(ref_date) FROM observations") == "2026-10-30"  # sexta
+    assert _one(conn, "SELECT MIN(ref_date) FROM observations") == "2021-11-01"
+    conn.close()
+
+
 def test_limites_da_janela_sao_respeitados(tmp_path):
     _run(tmp_path, BusinessDaySession())
     conn = db.connect(tmp_path / "t.db")
