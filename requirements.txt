@@ -6,4 +6,8 @@ tzdata>=2024.1
 streamlit>=1.66,<2
 # Já vem com o Streamlit, mas é importado diretamente em src/charts.py.
 altair>=5.0,<7
+# Fonte do Ibovespa. Não é fonte oficial e os padrões já mudaram entre versões:
+# os parâmetros relevantes são passados explicitamente em src/extract_yf.py.
+yfinance>=1.7,<2
+
 pytest>=9.0,<10

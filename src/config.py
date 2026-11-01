@@ -52,7 +52,7 @@ class Series:
     key: str
     name: str  # rótulo exibido na interface
     source: str
-    sgs_code: int
+    sgs_code: int  # 0 quando a fonte não é o SGS
     unit: str
     frequency: str
     kind: str  # "nivel" (estoque) ou "taxa" (fluxo, exige capitalização)
@@ -60,9 +60,9 @@ class Series:
     # --- validação ---------------------------------------------------------
     # Rejeita valores <= 0 apenas onde a DEFINIÇÃO da série os impede.
     reject_non_positive: bool
-    # Faixa de alerta: fora dela a observação é SINALIZADA, nunca descartada.
-    # Regra operacional e configurável; não é garantia de detectar troca de
-    # unidade nem separador decimal deslocado.
+    # Faixa de alerta por NÍVEL: fora dela a observação é SINALIZADA, nunca
+    # descartada. Regra operacional e configurável; não é garantia de detectar
+    # troca de unidade nem separador decimal deslocado.
     alert_min: float | None
     alert_max: float | None
     # Lacuna acima da qual a carga é barrada. Ver comentário no topo do arquivo.
@@ -72,6 +72,16 @@ class Series:
     # Meses extras coletados ANTES da janela de exibição, necessários para
     # métricas que olham para trás (ex.: acumulado em 12 meses na primeira data).
     margin_months: int
+
+    # --- fonte -------------------------------------------------------------
+    source_kind: str = "sgs"  # "sgs" ou "yfinance"
+    ticker: str | None = None  # usado quando source_kind == "yfinance"
+
+    # --- validação por variação --------------------------------------------
+    # Faixa de alerta por VARIAÇÃO entre observações consecutivas, em %.
+    # Complementa a faixa por nível: um valor pode ser plausível isoladamente e
+    # destoar do anterior. Também apenas SINALIZA, pedindo revisão humana.
+    alert_max_change_pct: float | None = None
 
     # --- atualidade --------------------------------------------------------
     # Exatamente um dos dois: dias (séries diárias) ou meses (séries mensais).
@@ -169,6 +179,40 @@ SERIES: dict[str, Series] = {
             "Unidade percentual e periodicidade mensal do índice são confirmadas pelo "
             "IBGE. Ressalva: naquela página a unidade e a periodicidade aparecem uma vez "
             "para o grupo de 33 séries do IPCA, não por série."
+        ),
+        identification_alert=False,
+    ),
+    "ibovespa": Series(
+        key="ibovespa",
+        name="Ibovespa",
+        source="yfinance — ticker ^BVSP (apuração: B3)",
+        sgs_code=0,  # não vem do SGS
+        source_kind="yfinance",
+        ticker="^BVSP",
+        unit="pontos",
+        frequency="diária (pregões)",
+        kind="nivel",
+        reject_non_positive=True,  # um índice de preços não pode ser <= 0
+        alert_min=None,
+        alert_max=None,
+        # Alerta por VARIAÇÃO, e não por nível: um valor pode ser plausível sozinho
+        # e destoar do pregão anterior. O limite usa como âncora o circuit breaker da
+        # B3, que suspende as negociações quando o índice cai 10% ante o fechamento
+        # anterior — ou seja, o patamar que o próprio mercado trata como excepcional.
+        # Aplicado simetricamente a altas, o que a regra do circuit breaker não faz.
+        # PROVISÓRIO e configurável; ver limitações no README.
+        alert_max_change_pct=10.0,
+        max_gap_days=MAX_GAP_DAYS_DIARIA,
+        margin_months=0,
+        stale_after_days=STALE_AFTER_DAYS,
+        identification_note=(
+            "Fonte de terceiros, não oficial: o yfinance lê dados do Yahoo Finance, sem "
+            "contrato de estabilidade. O Ibovespa é apurado pela B3. Conferido em "
+            "01/11/2026: o fechamento de 26/10/2026 na série é 176.608 pontos, o mesmo "
+            "valor publicado por fonte jornalística independente, com variação de "
+            "-13,88% e acionamento de circuit breaker pela B3. Close e Adj Close "
+            "coincidem, como esperado para um índice sem desdobramentos nem dividendos a "
+            "ajustar — a conferência é refeita a cada carga."
         ),
         identification_alert=False,
     ),

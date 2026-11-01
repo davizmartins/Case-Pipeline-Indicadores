@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src import db, extract, load, transform
+from src import db, extract, extract_yf, load, transform
 from src.clock import today_br
 from src.config import SERIES, WINDOW_YEARS, Series
 
@@ -65,6 +65,7 @@ def run(
     session=None,
     sleep=time.sleep,
     clock=utc_now,
+    downloader=None,
 ) -> list[RunResult]:
     keys = indicators or list(SERIES)
     unknown = [k for k in keys if k not in SERIES]
@@ -87,20 +88,25 @@ def run(
                 window_end=end.isoformat(),
             )
             try:
-                rows = extract.extract_series(series, start, end, session=session, sleep=sleep)
+                if series.source_kind == "yfinance":
+                    rows = extract_yf.fetch(series, start, end, downloader=downloader)
+                else:
+                    rows = extract.extract_series(series, start, end, session=session, sleep=sleep)
                 raw_df = pd.DataFrame(rows, columns=["data", "valor"])
                 clean, report = transform.clean_sgs(
                     raw_df,
                     reject_non_positive=series.reject_non_positive,
                     alert_min=series.alert_min,
                     alert_max=series.alert_max,
+                    alert_max_change_pct=series.alert_max_change_pct,
                 )
                 cov = transform.validate_coverage(clean, start, end, series.max_gap_days)
                 loaded = load.load_series(conn, key, series.source, rows, clean, clock())
                 message = (
                     f"{loaded} observações carregadas ({cov['first_date']} a "
                     f"{cov['last_date']}); descartadas: {report['rows_discarded']}; "
-                    f"atípicas sinalizadas: {report['atypical']}; "
+                    f"atípicas sinalizadas: {report['atypical']} "
+                    f"(nível: {report['atypical_level']}, variação: {report['atypical_change']}); "
                     f"duplicadas removidas: {report['duplicates_removed']}; "
                     f"datas com valores conflitantes: {report['conflicting_dates']}"
                 )
