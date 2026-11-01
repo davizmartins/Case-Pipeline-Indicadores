@@ -47,10 +47,13 @@ def DualSession(cdi_session=None):
     })
 
 
-def _load(db_dir, session=None, indicators=("ptax", "cdi", "ipca")):
+def _load(db_dir, session=None, indicators=("ptax", "cdi", "ipca", "ibovespa")):
+    from tests.test_ibovespa import baixador, quadro, serie_cinco_anos
+
     return pipeline.run(
         list(indicators), today=TODAY, db_path=db_dir / "indicadores.db",
         session=session or DualSession(), sleep=no_sleep,
+        downloader=baixador(quadro(serie_cinco_anos())),
     )
 
 
@@ -60,7 +63,7 @@ def test_app_sem_base_mostra_instrucao_em_vez_de_quebrar(db_dir):
     assert any("python -m src.pipeline" in e.value for e in at.error)
 
 
-def test_app_exibe_os_tres_cartoes(db_dir, monkeypatch):
+def test_app_exibe_os_quatro_cartoes(db_dir, monkeypatch):
     _load(db_dir)
     monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
     at = AppTest.from_file(APP, default_timeout=60).run()
@@ -69,9 +72,13 @@ def test_app_exibe_os_tres_cartoes(db_dir, monkeypatch):
     assert any("venda" in r for r in rotulos)
     assert "Acumulado em 12 meses" in rotulos
     assert "IPCA acumulado em 12 meses" in rotulos
-    # O único aviso esperado nesta data é o falso alerta previsto da regra provisória
-    # do IPCA (ver test_freshness). Nenhum outro deve aparecer.
-    assert all("possível defasagem" in w.value for w in at.warning)
+    assert "Fechamento — pontos" in rotulos
+    # Nesta data esperamos exatamente dois avisos, ambos previstos: o falso alerta da
+    # regra provisória do IPCA e o pregão do Ibovespa sinalizado para revisão.
+    avisos = [w.value for w in at.warning]
+    assert len(avisos) == 2
+    assert any("possível defasagem" in a for a in avisos)
+    assert any("revisão" in a for a in avisos)
 
 
 def test_cifrao_e_escapado_para_nao_virar_formula_latex(db_dir, monkeypatch):
@@ -204,6 +211,30 @@ def test_ipca_muito_atrasado_vira_possivel_defasagem(db_dir, monkeypatch):
     assert "antes de haver atraso real" in avisos
 
 
+def test_cartao_do_ibovespa_lista_os_pregoes_sinalizados(db_dir, monkeypatch):
+    _load(db_dir)
+    monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    assert not at.exception
+    assert "Ibovespa" in [s.value for s in at.subheader]
+    assert any("Fechamento — pontos" == m.label for m in at.metric)
+    legendas = " ".join(c.value for c in at.caption)
+    assert "Pregões sinalizados para revisão (1): 26/10/2026" in legendas
+    assert "não foram alterados" in legendas
+    assert "yfinance — ticker ^BVSP" in legendas
+
+
+def test_sinalizacao_pede_revisao_e_nao_declara_erro(db_dir, monkeypatch):
+    _load(db_dir)
+    monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    aviso = next(w.value for w in at.warning if "revisão" in w.value)
+    assert "não" in aviso and "declara erro" in aviso
+    assert "sem substituição" in aviso
+    for proibido in ("erro", "inválido", "incorreto"):
+        assert f" {proibido} " not in aviso.replace("declara erro", "")
+
+
 def test_app_avisa_observacoes_atipicas(db_dir, monkeypatch):
     com_atipico = BusinessDaySession(
         value_fn=lambda d: 13.65 if (d.month, d.day) == (10, 30) else 0.050788
@@ -212,7 +243,8 @@ def test_app_avisa_observacoes_atipicas(db_dir, monkeypatch):
     monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
     at = AppTest.from_file(APP, default_timeout=60).run()
     assert any("faixa de alerta" in w.value for w in at.warning)
-    assert any("sinalizadas, não descartadas" in w.value for w in at.warning)
+    assert any("não\ndeclara erro" in w.value or "não declara erro" in w.value for w in at.warning)
+    assert any("sem substituição" in w.value for w in at.warning)
 
 
 def test_metodologia_declara_o_alcance_da_checagem(db_dir, monkeypatch):
