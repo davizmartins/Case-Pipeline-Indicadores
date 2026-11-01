@@ -362,6 +362,22 @@ Subtrair uma taxa da outra dá resultado parecido e errado.
 ausência isolada — um dia útil faltando dentro de um mês passaria sem alarme e
 subestimaria o acumulado daquele mês.
 
+### Cores e eixos
+
+**A cor segue o indicador, não a ordem em que ele aparece.** Cada série tem a sua cor
+em `Series.color`, usada em todos os gráficos do painel; filtrar séries não repinta as
+que sobram. Os quatro tons foram validados para separação sob daltonismo e contraste,
+nos dois modos de tema. Os pares que realmente convivem num mesmo gráfico — azul,
+laranja e verde-água na base 100; azul e amarelo nas barras — passam em todas as
+checagens. O amarelo fica a 2,99:1 de contraste em fundo claro, logo abaixo de 3:1; por
+isso o gráfico de barras traz legenda e os acumulados aparecem em números grandes
+acima dele.
+
+**O eixo de datas usa granularidade de dia.** Sem isso, um período curto fazia a
+biblioteca rotular o eixo em **horas** ("09 PM", "03 AM") sobre dados diários,
+sugerindo observações intradiárias que não existem. Há teste cobrindo os dois extremos,
+janela de 3 dias e de 5 anos.
+
 ### Filtro de período
 
 12 meses, 24 meses, 5 anos e personalizado. Afeta os gráficos de evolução e as duas
