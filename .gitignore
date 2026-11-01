@@ -1,0 +1,20 @@
+# Ambiente virtual
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Base gerada pelo pipeline (reconstruída com `python -m src.pipeline`)
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+
+# Editor / sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
