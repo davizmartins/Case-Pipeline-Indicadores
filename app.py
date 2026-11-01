@@ -1,4 +1,4 @@
-"""Dashboard (Etapa 2): PTAX e a série SGS 12, lado a lado.
+"""Dashboard: dólar, série SGS 12 e IPCA.
 
 Lê SOMENTE a base já carregada; nunca chama as fontes. Para atualizar os dados,
 rode `python -m src.pipeline`. Execução: `streamlit run app.py`.
@@ -10,8 +10,8 @@ import sqlite3
 
 import streamlit as st
 
-from src import charts, clock, db, metrics
-from src.config import MAX_GAP_DAYS, SERIES, STALE_AFTER_DAYS, get_db_path
+from src import charts, clock, db, freshness, metrics
+from src.config import SERIES, get_db_path
 from src.ptbr import fmt_date, fmt_number, fmt_pct, fmt_timestamp
 
 
@@ -23,9 +23,13 @@ def md(texto: str) -> str:
     return texto.replace("$", r"\$")
 
 
+def mes_ano(d) -> str:
+    return f"{d.month:02d}/{d.year}"
+
+
 st.set_page_config(page_title="Indicadores de Mercado", page_icon="📈", layout="wide")
 st.title("Indicadores de Mercado")
-st.caption("Versão em construção: dólar e a série SGS 12. IPCA e Ibovespa ainda não entraram.")
+st.caption("Versão em construção: dólar, série SGS 12 e IPCA. Ibovespa ainda não entrou.")
 
 path = get_db_path()
 if not path.exists():
@@ -54,35 +58,40 @@ for key, series in SERIES.items():
             "Os dados exibidos vêm da última carga bem-sucedida."
         )
     df = data.get(key)
-    if df is not None and not df.empty:
-        idade = (hoje - df.iloc[-1]["ref_date"].date()).days
-        if idade > STALE_AFTER_DAYS:
-            st.warning(
-                f"**{series.name}** — dados possivelmente desatualizados: a última "
-                f"observação é de {fmt_date(df.iloc[-1]['ref_date'].date())} ({idade} dias atrás)."
-            )
-    if df is not None and not df.empty and int(df["atypical"].sum()):
+    if df is None or df.empty:
+        continue
+    aviso = freshness.staleness_warning(series, df.iloc[-1]["ref_date"].date(), hoje)
+    if aviso:
+        st.warning(f"**{series.name}** — {aviso}")
+    if int(df["atypical"].sum()):
         st.warning(
             f"**{series.name}** — {int(df['atypical'].sum())} observação(ões) fora da faixa "
             "de alerta. Elas foram carregadas e estão sinalizadas, não descartadas."
         )
 
-col_ptax, col_cdi = st.columns(2)
+col_ptax, col_cdi, col_ipca = st.columns(3)
+
+
+def acumulado_12m(series, df):
+    """Acumulado em 12 meses até a última observação, ou None se a janela não cobre."""
+    return metrics.accumulated_12m(
+        df.assign(ref_date=df["ref_date"].dt.strftime("%Y-%m-%d")),
+        df.iloc[-1]["ref_date"].date(),
+        series.max_gap_days,
+        series.unexplained_absences,
+    )
+
 
 # --- Cartão: dólar americano (venda) ----------------------------------------
 with col_ptax:
     s = SERIES["ptax"]
     df = data["ptax"]
     st.subheader(s.name)
-    if s.identification_note and s.identification_alert:
-        st.info(s.identification_note, icon="⚠️")
     if df.empty:
         st.error("Sem observações. Execute `python -m src.pipeline`.")
     else:
         ultimo = df.iloc[-1]
-        delta = None
-        if len(df) > 1:
-            delta = fmt_pct((ultimo["value"] / df.iloc[-2]["value"] - 1) * 100)
+        delta = fmt_pct((ultimo["value"] / df.iloc[-2]["value"] - 1) * 100) if len(df) > 1 else None
         st.metric(
             label=md(f"Cotação de venda — {s.unit}"),
             value=f"R$ {fmt_number(ultimo['value'], 4)}",
@@ -92,7 +101,7 @@ with col_ptax:
         )
         st.caption(f"Data de referência: {fmt_date(ultimo['ref_date'].date())}")
         st.caption(f"Fonte: {s.source}")
-        st.altair_chart(charts.line_chart(df, s.unit, 2), use_container_width=True)
+        st.altair_chart(charts.line_chart(df, s.unit, 2), width="stretch")
 
 # --- Cartão: série SGS 12 ----------------------------------------------------
 with col_cdi:
@@ -106,12 +115,7 @@ with col_cdi:
     else:
         ultimo = df.iloc[-1]
         d_ref = ultimo["ref_date"].date()
-        acum = metrics.accumulated_12m(
-            df.assign(ref_date=df["ref_date"].dt.strftime("%Y-%m-%d")),
-            d_ref,
-            MAX_GAP_DAYS,
-            s.unexplained_absences,
-        )
+        acum = acumulado_12m(s, df)
         if acum["value"] is None:
             st.metric(label="Acumulado em 12 meses", value="indisponível")
             st.caption(
@@ -129,14 +133,52 @@ with col_cdi:
                 f"Período: observações posteriores a {fmt_date(acum['start_exclusive'])} até "
                 f"{fmt_date(acum['end'])} · {acum['n_obs']} observações"
             )
-        anual = metrics.annualize(ultimo["value"])
         st.caption(
             f"Taxa de {fmt_date(d_ref)}: {fmt_number(ultimo['value'], 6)}% a.d., "
-            f"equivalente a {fmt_number(anual, 2)}% a.a. (base 252). "
+            f"equivalente a {fmt_number(metrics.annualize(ultimo['value']), 2)}% a.a. (base 252). "
             "É conversão de unidade da taxa desse dia, não previsão de rendimento."
         )
         st.caption(f"Fonte: {s.source}")
-        st.altair_chart(charts.line_chart(df, s.unit, 3), use_container_width=True)
+        st.altair_chart(charts.line_chart(df, s.unit, 3), width="stretch")
+
+# --- Cartão: IPCA ------------------------------------------------------------
+with col_ipca:
+    s = SERIES["ipca"]
+    df = data["ipca"]
+    st.subheader(s.name)
+    if s.identification_note and s.identification_alert:
+        st.info(s.identification_note, icon="⚠️")
+    if df.empty:
+        st.error("Sem observações. Execute `python -m src.pipeline`.")
+    else:
+        ultimo = df.iloc[-1]
+        d_ref = ultimo["ref_date"].date()
+        acum = acumulado_12m(s, df)
+        if acum["value"] is None:
+            st.metric(label="IPCA acumulado em 12 meses", value="indisponível")
+            st.caption(
+                "A métrica não é apresentada porque a janela de 12 meses não está "
+                f"suficientemente coberta: {acum['coverage']['reason']}."
+            )
+        else:
+            st.metric(
+                label="IPCA acumulado em 12 meses",
+                value=f"{fmt_number(acum['value'], 2)}%",
+                help="Capitalização composta das variações mensais da janela — soma de "
+                "variações daria número errado. A checagem de cobertura detecta "
+                "interrupção prolongada da fonte, não ausência isolada.",
+            )
+            st.caption(
+                f"Período: meses posteriores a {mes_ano(acum['start_exclusive'])} até "
+                f"{mes_ano(acum['end'])} · {acum['n_obs']} meses"
+            )
+        st.caption(
+            f"Variação de {mes_ano(d_ref)}: {fmt_pct(ultimo['value'])}. "
+            "O mês de referência é anterior ao mês corrente porque o índice é "
+            "divulgado depois do fechamento do mês."
+        )
+        st.caption(f"Fonte: {s.source}")
+        st.altair_chart(charts.line_chart(df, s.unit, 2), width="stretch")
 
 # --- Metodologia e transparência ---------------------------------------------
 with st.expander("Metodologia, fontes e limitações"):
@@ -146,13 +188,20 @@ with st.expander("Metodologia, fontes e limitações"):
 uma pequena margem, e não começa em zero. São gráficos de linha para acompanhar o
 movimento de uma cotação ou de uma taxa, não para comparar magnitudes entre categorias.
 
+**Acumulado em 12 meses.** Capitalização composta das variações do período,
+∏(1 + taxa/100) − 1. Somar variações daria um número errado que não quebra nada.
+
 **Alcance da checagem de cobertura.** O pipeline detecta **interrupção prolongada**
-da fonte (mais de 10 dias corridos sem observação). Ele **não** detecta ausência
-isolada: um dia útil faltando no meio da semana produz lacuna de 2 dias e passa sem
-alarme. Portanto, o rótulo "12 meses" significa *a janela foi percorrida sem
-interrupção prolongada*, e **não** *todo dia útil está presente*. O projeto não tem
-calendário de dias úteis; fechar essa lacuna exigiria um calendário por série, com
-as exceções históricas de cada uma, e ficou fora desta etapa.
+da fonte. Ele **não** detecta ausência isolada: numa série diária, um dia útil faltando
+produz lacuna de 2 dias e passa sem alarme. Portanto, o rótulo "12 meses" significa
+*a janela foi percorrida sem interrupção prolongada*, e **não** *toda observação
+esperada está presente*. O projeto não tem calendário de dias úteis; fechar essa
+lacuna exigiria um calendário por série, com as exceções históricas de cada uma.
+
+**Defasagem do IPCA.** O índice é divulgado depois do fechamento do mês de referência,
+então o cartão sempre mostra um mês anterior ao corrente. Isso não é atraso. O aviso de
+"possível defasagem" é uma **aproximação**: o projeto não consulta o calendário oficial
+de divulgação do IBGE, então ele pode aparecer antes de haver atraso real.
 
 **Faixa de alerta.** Observações fora da faixa configurada são **carregadas** e
 sinalizadas, nunca descartadas. É regra operacional para chamar atenção humana, não
@@ -171,7 +220,8 @@ seu próprio calendário e seu próprio prazo de publicação.
             md(f"**{series.name}** — {series.source} · {series.unit} · {series.frequency}")
         )
         if series.identification_note:
-            st.caption(f"Pendência: {series.identification_note}")
+            rotulo = "Identificação" if not series.identification_alert else "Pendência"
+            st.caption(f"{rotulo}: {series.identification_note}")
         if not df.empty:
             st.caption(
                 f"{len(df)} observações de {fmt_date(df.iloc[0]['ref_date'].date())} "

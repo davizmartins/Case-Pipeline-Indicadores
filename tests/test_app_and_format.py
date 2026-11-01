@@ -7,7 +7,14 @@ from streamlit.testing.v1 import AppTest
 from src import clock, pipeline
 from src.config import SERIES
 from src.ptbr import fmt_date, fmt_number, fmt_pct, fmt_timestamp
-from tests.helpers import BusinessDaySession, ScriptedSession, cdi_value, no_sleep
+from tests.helpers import (
+    BusinessDaySession,
+    MonthlySession,
+    RouterSession,
+    ScriptedSession,
+    cdi_value,
+    no_sleep,
+)
 
 APP = str(Path(__file__).resolve().parent.parent / "app.py")
 TODAY = date(2026, 10, 30)
@@ -31,19 +38,16 @@ def db_dir(tmp_path, monkeypatch):
     return d
 
 
-class DualSession:
+def DualSession(cdi_session=None):
     """Dublê que devolve valores diferentes para cada série, como a fonte real."""
-
-    def __init__(self):
-        self.ptax = BusinessDaySession()
-        self.cdi = BusinessDaySession(value_fn=cdi_value)
-
-    def get(self, url, params, timeout):
-        alvo = self.cdi if "sgs.12/" in url else self.ptax
-        return alvo.get(url, params, timeout)
+    return RouterSession({
+        1: BusinessDaySession(),
+        12: cdi_session or BusinessDaySession(value_fn=cdi_value),
+        433: MonthlySession(ultimo=(2026, 9)),  # defasagem de divulgação, como na fonte
+    })
 
 
-def _load(db_dir, session=None, indicators=("ptax", "cdi")):
+def _load(db_dir, session=None, indicators=("ptax", "cdi", "ipca")):
     return pipeline.run(
         list(indicators), today=TODAY, db_path=db_dir / "indicadores.db",
         session=session or DualSession(), sleep=no_sleep,
@@ -56,15 +60,18 @@ def test_app_sem_base_mostra_instrucao_em_vez_de_quebrar(db_dir):
     assert any("python -m src.pipeline" in e.value for e in at.error)
 
 
-def test_app_exibe_os_dois_cartoes_sem_avisos_quando_atual(db_dir, monkeypatch):
+def test_app_exibe_os_tres_cartoes(db_dir, monkeypatch):
     _load(db_dir)
     monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
     at = AppTest.from_file(APP, default_timeout=60).run()
     assert not at.exception
-    assert not at.warning
     rotulos = [m.label for m in at.metric]
     assert any("venda" in r for r in rotulos)
-    assert any("12 meses" in r for r in rotulos)
+    assert "Acumulado em 12 meses" in rotulos
+    assert "IPCA acumulado em 12 meses" in rotulos
+    # O único aviso esperado nesta data é o falso alerta previsto da regra provisória
+    # do IPCA (ver test_freshness). Nenhum outro deve aparecer.
+    assert all("possível defasagem" in w.value for w in at.warning)
 
 
 def test_cifrao_e_escapado_para_nao_virar_formula_latex(db_dir, monkeypatch):
@@ -155,15 +162,53 @@ def test_app_avisa_quando_ultima_execucao_falhou(db_dir, monkeypatch):
     assert at.metric  # continua mostrando a última carga boa
 
 
-def test_app_avisa_observacoes_atipicas(db_dir, monkeypatch):
-    class ComAtipico(DualSession):
-        def __init__(self):
-            super().__init__()
-            self.cdi = BusinessDaySession(
-                value_fn=lambda d: 13.65 if (d.month, d.day) == (10, 30) else 0.050788
-            )
+def test_cartao_do_ipca_mostra_acumulado_e_mes_de_referencia(db_dir, monkeypatch):
+    _load(db_dir)
+    monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    assert not at.exception
+    assert "IPCA — variação mensal" in [s.value for s in at.subheader]
+    assert any("IPCA acumulado em 12 meses" == m.label for m in at.metric)
+    legendas = " ".join(c.value for c in at.caption)
+    assert "Variação de 09/2026" in legendas
+    assert "meses posteriores a 09/2025 até 09/2026" in legendas
+    assert "divulgado depois do fechamento do mês" in legendas
 
-    _load(db_dir, session=ComAtipico())
+
+def test_ipca_nao_tem_aviso_de_identificacao_em_destaque(db_dir, monkeypatch):
+    """A identificação da 433 foi confirmada por metadados oficiais do BCB."""
+    _load(db_dir)
+    monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    assert len(at.info) == 1  # só a série 12 segue pendente
+    legendas = " ".join(c.value for c in at.caption)
+    assert "Identificação CONFIRMADA" in legendas and "MG41BP" in legendas
+    assert "01/11/2026" in legendas  # data da consulta
+    assert "27/09/2002" in legendas  # data da própria página
+
+
+def test_mes_corrente_ainda_nao_divulgado_nao_vira_aviso(db_dir, monkeypatch):
+    """Em 01/11 ter setembro é normal; o alerta não pode disparar por isso."""
+    _load(db_dir)
+    monkeypatch.setattr(clock, "today_br", lambda: date(2026, 10, 20))
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    assert not any("defasagem" in w.value for w in at.warning)
+
+
+def test_ipca_muito_atrasado_vira_possivel_defasagem(db_dir, monkeypatch):
+    _load(db_dir)
+    monkeypatch.setattr(clock, "today_br", lambda: date(2026, 12, 1))
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    avisos = " ".join(w.value for w in at.warning)
+    assert "possível defasagem" in avisos
+    assert "antes de haver atraso real" in avisos
+
+
+def test_app_avisa_observacoes_atipicas(db_dir, monkeypatch):
+    com_atipico = BusinessDaySession(
+        value_fn=lambda d: 13.65 if (d.month, d.day) == (10, 30) else 0.050788
+    )
+    _load(db_dir, session=DualSession(cdi_session=com_atipico))
     monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
     at = AppTest.from_file(APP, default_timeout=60).run()
     assert any("faixa de alerta" in w.value for w in at.warning)
