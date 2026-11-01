@@ -85,5 +85,52 @@ class ScriptedSession:
         return item
 
 
+class MonthlySession:
+    """Simula uma série mensal do SGS: um registro por mês, carimbado no dia 01.
+
+    Reproduz as mesmas recusas do serviço real que o dublê diário reproduz.
+    `ultimo` permite simular a defasagem de divulgação (o mês corrente ainda não saiu).
+    """
+
+    def __init__(self, value_fn=lambda y, m: 0.50, ultimo: tuple[int, int] | None = None):
+        self.value_fn = value_fn
+        self.ultimo = ultimo
+        self.calls: list[dict] = []
+
+    def get(self, url, params, timeout):
+        self.calls.append({"url": url, "params": dict(params), "timeout": timeout})
+        start = datetime.strptime(params["dataInicial"], "%d/%m/%Y").date()
+        end = datetime.strptime(params["dataFinal"], "%d/%m/%Y").date()
+        if start >= end:
+            return FakeResponse(400, SGS_ERRO_UM_DIA)
+        y, m = (start.year, start.month) if start.day == 1 else _prox_mes(start.year, start.month)
+        rows = []
+        while date(y, m, 1) <= end:
+            if self.ultimo and (y, m) > self.ultimo:
+                break
+            rows.append({"data": f"01/{m:02d}/{y}", "valor": f"{self.value_fn(y, m):.2f}"})
+            y, m = _prox_mes(y, m)
+        if not rows:
+            return FakeResponse(404, SGS_ERRO_SEM_DADOS)
+        return FakeResponse(200, rows)
+
+
+def _prox_mes(y: int, m: int) -> tuple[int, int]:
+    return (y + 1, 1) if m == 12 else (y, m + 1)
+
+
+class RouterSession:
+    """Encaminha cada código de série do SGS ao dublê correspondente."""
+
+    def __init__(self, por_codigo: dict[int, object]):
+        self.por_codigo = por_codigo
+
+    def get(self, url, params, timeout):
+        for code, sessao in self.por_codigo.items():
+            if f"sgs.{code}/" in url:
+                return sessao.get(url, params, timeout)
+        raise AssertionError(f"nenhum dublê configurado para {url}")
+
+
 def no_sleep(_seconds: float) -> None:
     return None

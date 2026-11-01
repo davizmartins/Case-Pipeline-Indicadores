@@ -25,7 +25,7 @@ import pandas as pd
 
 from src import db, extract, load, transform
 from src.clock import today_br
-from src.config import MAX_GAP_DAYS, SERIES, WINDOW_YEARS, Series
+from src.config import SERIES, WINDOW_YEARS, Series
 
 log = logging.getLogger("pipeline")
 
@@ -95,7 +95,7 @@ def run(
                     alert_min=series.alert_min,
                     alert_max=series.alert_max,
                 )
-                cov = transform.validate_coverage(clean, start, end, MAX_GAP_DAYS)
+                cov = transform.validate_coverage(clean, start, end, series.max_gap_days)
                 loaded = load.load_series(conn, key, series.source, rows, clean, clock())
                 message = (
                     f"{loaded} observações carregadas ({cov['first_date']} a "

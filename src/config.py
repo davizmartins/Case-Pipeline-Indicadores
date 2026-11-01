@@ -22,12 +22,14 @@ RETRY_BACKOFF_SECONDS = 2.0
 WINDOW_YEARS = 5
 CHUNK_YEARS = 1
 
-# ATENÇÃO AO ALCANCE DESTA REGRA. MAX_GAP_DAYS detecta INTERRUPÇÃO PROLONGADA da
-# fonte — um bloco que não veio, uma indisponibilidade. Ele NÃO detecta ausência
-# isolada: um dia útil faltando no meio da semana produz lacuna de 2 dias, e até
-# uma segunda-feira após feriado prolongado fica em 5 ou 6 — todos muito abaixo
-# do limite. Passar nesta checagem NÃO certifica que a série está completa.
-MAX_GAP_DAYS = 10
+# ATENÇÃO AO ALCANCE DESTA REGRA. O limite de lacuna detecta INTERRUPÇÃO PROLONGADA
+# da fonte — um bloco que não veio, uma indisponibilidade. Ele NÃO detecta ausência
+# isolada: numa série diária, um dia útil faltando produz lacuna de 2 dias, muito
+# abaixo do limite. Passar nesta checagem NÃO certifica que a série está completa.
+MAX_GAP_DAYS_DIARIA = 10
+# Série mensal: observações consecutivas distam 28 a 31 dias; um mês faltando produz
+# lacuna de 59 a 62. O limite fica entre os dois.
+MAX_GAP_DAYS_MENSAL = 40
 
 STALE_AFTER_DAYS = 7
 TIMEZONE = "America/Sao_Paulo"
@@ -63,11 +65,18 @@ class Series:
     # unidade nem separador decimal deslocado.
     alert_min: float | None
     alert_max: float | None
+    # Lacuna acima da qual a carga é barrada. Ver comentário no topo do arquivo.
+    max_gap_days: int
 
     # --- janela ------------------------------------------------------------
     # Meses extras coletados ANTES da janela de exibição, necessários para
     # métricas que olham para trás (ex.: acumulado em 12 meses na primeira data).
     margin_months: int
+
+    # --- atualidade --------------------------------------------------------
+    # Exatamente um dos dois: dias (séries diárias) ou meses (séries mensais).
+    stale_after_days: int | None = None
+    stale_after_months: int | None = None
 
     # --- pendências --------------------------------------------------------
     # Texto exibido na seção de metodologia sempre que preenchido.
@@ -94,7 +103,9 @@ SERIES: dict[str, Series] = {
         reject_non_positive=True,  # uma taxa de câmbio não pode ser <= 0
         alert_min=None,
         alert_max=None,
+        max_gap_days=MAX_GAP_DAYS_DIARIA,
         margin_months=0,
+        stale_after_days=STALE_AFTER_DAYS,
         identification_note=(
             "Os valores coletados coincidem com a consulta histórica de cotações do "
             "Banco Central: em 30/10/2026 ela mostra 5,4206 na compra e 5,4212 na venda, "
@@ -117,13 +128,48 @@ SERIES: dict[str, Series] = {
         reject_non_positive=False,  # taxa zero é válida; negativa é sinalizada
         alert_min=0.0,
         alert_max=0.5,
+        max_gap_days=MAX_GAP_DAYS_DIARIA,
         margin_months=12,
+        stale_after_days=STALE_AFTER_DAYS,
         identification_note=(
             "Os metadados oficiais do SGS para esta série não puderam ser consultados: "
-            "o portal do SGS responde 'Requisição inválida' e o portal de dados abertos "
-            "do BCB não traz entrada localizável para o CDI. O nome, a unidade e a "
-            "periodicidade seguem NÃO CONFIRMADOS por fonte oficial."
+            "o portal do SGS responde 'Requisição inválida' e a página de metadados de "
+            "juros do BCB (mg45p) documenta apenas séries da Selic, sem mencionar o CDI "
+            "nem os códigos 12 e 4389. O nome, a unidade e a periodicidade seguem NÃO "
+            "CONFIRMADOS por fonte oficial — o que significa não encontrados, não "
+            "inexistentes."
         ),
         identification_alert=True,
+    ),
+    "ipca": Series(
+        key="ipca",
+        name="IPCA — variação mensal",
+        source="Banco Central — SGS 433 (apuração: IBGE)",
+        sgs_code=433,
+        unit="% ao mês",
+        frequency="mensal",
+        kind="taxa",
+        # Deflação é um resultado legítimo: agosto de 2025 fechou em -0,11%.
+        reject_non_positive=False,
+        # Faixa de alerta desenhada contra a confusão realista: trocar a série 433
+        # (variação mensal) pela 13522 (acumulado em 12 meses), cujos valores ficam
+        # na casa de 4 a 5. Nos 21 meses conferidos, a 433 variou de -0,32 a 1,31.
+        # Regra OPERACIONAL e provisória; não é garantia de detectar troca de unidade.
+        alert_min=-2.0,
+        alert_max=3.0,
+        max_gap_days=MAX_GAP_DAYS_MENSAL,
+        margin_months=12,
+        stale_after_months=2,
+        identification_note=(
+            "Identificação CONFIRMADA por fonte oficial: a página de metadados de séries "
+            "temporais do Banco Central lista '0433 — IPCA (índice nacional de preços ao "
+            "consumidor-amplo)', fonte IBGE "
+            "(www4.bcb.gov.br/PEC/SERIES/PORT/METADADOS/MG41BP.HTM, consultada em "
+            "01/11/2026; a própria página informa última atualização em 27/09/2002). "
+            "Unidade percentual e periodicidade mensal do índice são confirmadas pelo "
+            "IBGE. Ressalva: naquela página a unidade e a periodicidade aparecem uma vez "
+            "para o grupo de 33 séries do IPCA, não por série."
+        ),
+        identification_alert=False,
     ),
 }
