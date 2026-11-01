@@ -4,4 +4,6 @@ pandas>=3.0,<4
 # Necessário para fusos horários (zoneinfo) no Windows, que não traz banco de fusos próprio.
 tzdata>=2024.1
 streamlit>=1.66,<2
+# Já vem com o Streamlit, mas é importado diretamente em src/charts.py.
+altair>=5.0,<7
 pytest>=9.0,<10
