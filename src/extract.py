@@ -32,9 +32,21 @@ def _fmt(d: date) -> str:
 
 
 def date_chunks(start: date, end: date, years: int = CHUNK_YEARS) -> list[tuple[date, date]]:
-    """Divide [start, end] em blocos consecutivos, sem sobreposição, inclusive nas pontas."""
+    """Divide [start, end] em blocos consecutivos, sem sobreposição, inclusive nas pontas.
+
+    O SGS exige dataFinal ESTRITAMENTE maior que dataInicial: um bloco de um único dia é
+    recusado com HTTP 400 ("DataFinal deve ser maior que dataInicial."), tenha ele dado ou
+    não (verificado em 01/11/2026). Por isso, quando a sobra final é de um dia, ela é
+    absorvida pelo bloco anterior, que fica com um dia a mais. Nenhuma data pedida deixa de
+    ser coberta e os blocos continuam sem sobreposição.
+    """
     if start > end:
         raise ValueError(f"início {start} posterior ao fim {end}")
+    if start == end:
+        raise ValueError(
+            f"intervalo de um único dia ({start}): o SGS exige dataFinal maior que "
+            "dataInicial; peça ao menos dois dias"
+        )
     chunks: list[tuple[date, date]] = []
     cursor = start
     while cursor <= end:
@@ -42,7 +54,23 @@ def date_chunks(start: date, end: date, years: int = CHUNK_YEARS) -> list[tuple[
         chunk_end = min(next_start - timedelta(days=1), end)
         chunks.append((cursor, chunk_end))
         cursor = chunk_end + timedelta(days=1)
+    if len(chunks) > 1 and chunks[-1][0] == chunks[-1][1]:
+        chunks[-2] = (chunks[-2][0], chunks[-1][1])
+        chunks.pop()
     return chunks
+
+
+def _describe(resp) -> str:
+    """Status + corpo da resposta, para que a causa apareça no log em vez de só 'HTTP 400'.
+
+    O SGS explica o motivo no corpo (ex.: "DataFinal deve ser maior que dataInicial.",
+    "Value(s) not found", "dataInicial invalida..."). Sem isso o erro é indiagnosticável.
+    """
+    try:
+        body = " ".join((resp.text or "").split())[:300]
+    except Exception:  # um dublê de teste pode não ter .text
+        body = ""
+    return f"HTTP {resp.status_code}" + (f" — {body}" if body else "")
 
 
 def _parse(resp, code: int, start: date, end: date) -> list[dict]:
@@ -78,10 +106,10 @@ def fetch_chunk(
             last_error = f"{type(exc).__name__}: {exc}"
         else:
             if resp.status_code >= 500:
-                last_error = f"HTTP {resp.status_code}"
+                last_error = _describe(resp)
             elif resp.status_code != 200:
                 raise ExtractionError(
-                    f"SGS {code} [{_fmt(start)}..{_fmt(end)}]: HTTP {resp.status_code}"
+                    f"SGS {code} [{_fmt(start)}..{_fmt(end)}]: {_describe(resp)}"
                 )
             else:
                 return _parse(resp, code, start, end)
