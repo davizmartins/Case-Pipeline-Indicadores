@@ -259,7 +259,7 @@ for coluna, key in zip((e1, e2, e3, e4), ("ptax", "cdi", "ipca", "ibovespa")):
         if df is None:
             st.info("Sem observações no período selecionado.")
         else:
-            st.altair_chart(charts.line_chart(df, s.unit, casas[key]), width="stretch")
+            st.altair_chart(charts.line_chart(df, s.unit, casas[key], color=s.color), width="stretch")
             st.caption(
                 f"{len(df)} observações · {fmt_date(df['ref_date'].iloc[0])} a "
                 f"{fmt_date(df['ref_date'].iloc[-1])}"
@@ -290,7 +290,8 @@ else:
             idx = metrics.index_rate(df, base) if s.kind == "taxa" else metrics.index_level(df, base)
             partes.append(idx.assign(serie=s.name))
         longo = pd.concat(partes, ignore_index=True)
-        st.altair_chart(charts.multi_line_chart(longo, "Base 100", 1), width="stretch")
+        cores = {SERIES[k].name: SERIES[k].color for k in diarias}
+        st.altair_chart(charts.multi_line_chart(longo, "Base 100", 1, cores), width="stretch")
 
         st.caption(f"**Data-base efetiva: {fmt_date(base)}** — a primeira data, dentro do "
                    "período, com observação nas três séries. Todas valem 100 nela.")
@@ -362,18 +363,21 @@ else:
             "filtro, têm o índice mensal publicado e passam na checagem de cobertura da "
             "série diária. O último mês elegível sai dos dados, não está fixado no código."
         )
+        rotulos = [f"{m['mes'][5:]}/{m['mes'][:4]}" for m in meses]  # AAAA-MM -> MM/AAAA
+        nome_taxa, nome_ipca = SERIES["cdi"].name, SERIES["ipca"].name
         barras = pd.concat(
             [
-                pd.DataFrame({"mes": [m["mes"] for m in meses],
-                              "valor": [m["taxa"] for m in meses],
-                              "serie": "Série SGS 12"}),
-                pd.DataFrame({"mes": [m["mes"] for m in meses],
-                              "valor": [m["mensal"] for m in meses],
-                              "serie": "IPCA"}),
+                pd.DataFrame({"mes": rotulos,
+                              "valor": [m["taxa"] for m in meses], "serie": nome_taxa}),
+                pd.DataFrame({"mes": rotulos,
+                              "valor": [m["mensal"] for m in meses], "serie": nome_ipca}),
             ],
             ignore_index=True,
         )
-        st.altair_chart(charts.bar_chart(barras, "% no mês", 2), width="stretch")
+        cores_mensal = {nome_taxa: SERIES["cdi"].color, nome_ipca: SERIES["ipca"].color}
+        st.altair_chart(
+            charts.bar_chart(barras, "% no mês", 2, cores_mensal), width="stretch"
+        )
         st.caption(
             "**Retorno real pela razão:** (1 + taxa) ÷ (1 + inflação) − 1. Subtrair uma "
             "taxa da outra dá resultado parecido e errado. "

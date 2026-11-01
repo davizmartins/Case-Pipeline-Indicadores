@@ -77,6 +77,12 @@ class Series:
     source_kind: str = "sgs"  # "sgs" ou "yfinance"
     ticker: str | None = None  # usado quando source_kind == "yfinance"
 
+    # --- apresentação ------------------------------------------------------
+    # A cor segue o INDICADOR, não a ordem em que ele aparece num gráfico: assim
+    # ele é reconhecível em todo o painel e filtrar séries não repinta as outras.
+    # Tons validados para daltonismo e contraste; ver src/charts.py.
+    color: str = "#3987e5"
+
     # --- validação por variação --------------------------------------------
     # Faixa de alerta por VARIAÇÃO entre observações consecutivas, em %.
     # Complementa a faixa por nível: um valor pode ser plausível isoladamente e
@@ -104,6 +110,7 @@ class Series:
 SERIES: dict[str, Series] = {
     "ptax": Series(
         key="ptax",
+        color="#d95926",
         name="Dólar americano (venda)",
         source="Banco Central — SGS 1",
         sgs_code=1,
@@ -129,6 +136,7 @@ SERIES: dict[str, Series] = {
     ),
     "cdi": Series(
         key="cdi",
+        color="#3987e5",
         name="Série SGS 12 — identificação como CDI pendente",
         source="Banco Central — SGS 12",
         sgs_code=12,
@@ -153,6 +161,7 @@ SERIES: dict[str, Series] = {
     ),
     "ipca": Series(
         key="ipca",
+        color="#c98500",
         name="IPCA — variação mensal",
         source="Banco Central — SGS 433 (apuração: IBGE)",
         sgs_code=433,
@@ -184,6 +193,7 @@ SERIES: dict[str, Series] = {
     ),
     "ibovespa": Series(
         key="ibovespa",
+        color="#199e70",
         name="Ibovespa",
         source="yfinance — ticker ^BVSP (apuração: B3)",
         sgs_code=0,  # não vem do SGS
