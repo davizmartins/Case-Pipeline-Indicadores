@@ -67,8 +67,8 @@ fontes (SGS/BCB)  ->  src/extract.py  ->  src/transform.py  ->  src/load.py  -> 
 
 | Indicador | Fonte | Código | Unidade | Frequência | Margem | Situação |
 |---|---|---|---|---|---|---|
-| Dólar PTAX (venda) | SGS/BCB | 1 | R$/US$ | diária (dias úteis) | — | implementado |
-| Série SGS 12 | SGS/BCB | 12 | % ao dia | diária (dias úteis) | 12 meses | implementado, **identificação pendente** |
+| Dólar americano (venda) | Banco Central — SGS | 1 | R$/US$ | diária (dias úteis) | — | implementado, **identificação como PTAX de fechamento pendente** |
+| Série SGS 12 | Banco Central — SGS | 12 | % ao dia | diária (dias úteis) | 12 meses | implementado, **identificação pendente** |
 | IPCA | SGS/BCB | a definir | % ao mês | mensal | 12 meses | pendente |
 | Ibovespa | yfinance `^BVSP` | — | pontos | diária (pregões) | — | pendente |
 
@@ -82,6 +82,11 @@ Conferência numérica adicional: em 30/10/2026 a página de cotações históri
 5,4206 na compra e **5,4212 na venda** — o mesmo valor que a série 1 devolveu. Isso confere **um
 valor em uma data** por dois caminhos do BCB. **Não** valida a API Olinda nem resolve a
 identidade metodológica da série.
+
+Por isso o dashboard a identifica como **"Dólar americano (venda)"**, o nome do catálogo, e não
+como PTAX. **A confirmação continua necessária**, porque o indicador pedido no case é o dólar
+PTAX venda: enquanto ela não vier, o projeto entrega uma série que coincide numericamente no
+ponto conferido, sem ter estabelecido que é a série pedida.
 
 ### Série 12 — identificação NÃO confirmada
 
@@ -172,6 +177,15 @@ nas próximas execuções.
 
 Quando houver ausência conhecida e ainda não explicada dentro da janela, ela é registrada em
 `Series.unexplained_absences` e a métrica **não** é apresentada como completa.
+
+### Escala dos gráficos
+
+O eixo vertical é ajustado à faixa dos dados do período, com margem de 5% da amplitude, e **não
+começa em zero**. São gráficos de linha para acompanhar o **movimento** de uma cotação ou de uma
+taxa, não para comparar magnitudes entre categorias — num gráfico de barras a base zero seria
+obrigatória, aqui não é. Começando em zero, a variação da PTAX de 4,62 a 6,21 vira uma linha
+quase reta. Os gráficos não levam título: o eixo informa unidade e período, e um título
+interpretativo sugeriria leitura que os dados sozinhos não sustentam.
 
 ## Fórmulas e convenções
 
