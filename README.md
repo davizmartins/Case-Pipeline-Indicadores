@@ -58,10 +58,32 @@ americano (venda) – diário", unidade R$/US$, origem na transação PTAX800, e
 março de 1992 a cotação de fechamento passou a ser denominada PTAX. Não é uma afirmação literal de
 "PTAX venda"; por isso existe a conferência com a Olinda (abaixo).
 
+### Restrições da API SGS (verificadas em 01/11/2026)
+
+Consultas feitas direto ao serviço, fora do pipeline, para entender respostas de erro:
+
+| Pedido | Resposta | Significado |
+|---|---|---|
+| `dataInicial == dataFinal` | `400` · `DataFinal deve ser maior que dataInicial.` | intervalo de um dia é recusado **mesmo havendo cotação** nesse dia |
+| intervalo válido, sem cotações | `404` · `Value(s) not found` | ausência de dados, não erro de pedido |
+| data inexistente (`99/99/2026`) | `400` · `dataInicial invalida...` | pedido malformado |
+| intervalo com dados terminando em fim de semana | `200` + cotações | funciona normalmente |
+
+Duas consequências para o código:
+
+1. **Um único dia é inatingível por esta API.** Para obter só uma data é preciso pedir um
+   intervalo de ao menos dois dias e filtrar. O fatiamento garante que nenhum bloco tenha um dia
+   só, absorvendo a sobra final no bloco anterior.
+2. **"Sem dados" é distinguível de "pedido errado"** (404 com mensagem própria vs. 400). Isso
+   permitirá, na atualização incremental, tolerar intervalos vazios sem mascarar erros reais.
+   Hoje o 404 ainda é falha explícita, porque com o fatiamento corrigido nenhum bloco da janela
+   de 5 anos pode vir vazio.
+
 ## Decisões de tratamento (Etapa 1)
 
 - **Janela:** últimos 5 anos corridos, `[hoje - 5 anos, hoje]`, inclusive nas duas pontas, com "hoje" no fuso de Brasília.
-- **Consultas em blocos anuais:** o SGS limita consultas diárias a 10 anos e exige datas de início e fim.
+- **Consultas em blocos anuais:** o SGS limita consultas diárias a 10 anos e exige datas de início e fim. Se a sobra final da janela for de um único dia, ela entra no bloco anterior — o SGS recusa `dataInicial == dataFinal`. Uma janela inteira de um dia só é rejeitada com erro explícito, pois não há bloco anterior que a absorva.
+- **Erros HTTP carregam o corpo da resposta** na mensagem e no log: é lá que o SGS explica a causa.
 - **Falha é falha:** sem resposta válida da fonte, nada é carregado, a falha é registrada em `pipeline_runs` e o processo sai com código 1. Nunca há dados fictícios.
 - **Valores inválidos** (vazios, não numéricos, infinitos, e `<= 0` na PTAX) são descartados e contados — **nunca viram zero**.
 - **Duplicidade:** chave `(indicador, data)`; havendo repetição, vale a última ocorrência e datas com valores conflitantes são contadas.
@@ -72,8 +94,8 @@ março de 1992 a cotação de fechamento passou a ser denominada PTAX. Não é u
 
 ## Verificações
 
-- **Testes automatizados (`pytest`):** cobrem blocos de datas, retentativas, resposta malformada, limpeza, duplicidade, lacunas, carga idempotente e atualização por revisão, falha sem corromper a base e o dashboard. Usam dados controlados; **não tocam a rede**.
-- **Extração real do SGS:** ainda **não foi executada**. Rode `python -m src.pipeline` e confira a saída.
+- **Testes automatizados (`pytest`):** cobrem blocos de datas, retentativas, resposta malformada, limpeza, duplicidade, lacunas, carga idempotente e atualização por revisão, falha sem corromper a base e o dashboard. Usam dados controlados; **não tocam a rede**. O dublê da fonte reproduz as recusas reais do SGS (400 em intervalo de um dia, 404 em intervalo vazio), para não ser mais permissivo que o serviço.
+- **Extração real do SGS:** executada em 01/11/2026. Trouxe **1.256 observações** de 01/11/2021 a 30/10/2026. Nessa execução o fatiamento gerava um bloco final de um único dia e o SGS o recusava com HTTP 400, derrubando a carga inteira; esse defeito está corrigido e **a reexecução após a correção ainda precisa ser confirmada**.
 - **`scripts/verify_ptax.py`:** compara a PTAX armazenada com a API Olinda do BCB em todo o período (conjunto de datas idêntico e valores iguais em 4 casas). A parte de rede desse script também **ainda não foi executada e o endereço da Olinda não foi conferido na documentação oficial** — confirme antes de confiar no resultado.
 
 ## Limitações atuais
