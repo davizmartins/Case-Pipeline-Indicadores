@@ -1,15 +1,72 @@
 # Pipeline de Indicadores de Mercado
 
-ETL em Python que extrai séries públicas de mercado, trata e armazena em SQLite e alimenta um
-dashboard em Streamlit. Case técnico — Vêneto Family Office.
+ETL em Python que extrai quatro séries públicas do mercado brasileiro, trata e armazena em
+SQLite e alimenta um dashboard em Streamlit. Case técnico — Vêneto Family Office.
 
-> **Estado atual: dólar PTAX e a série SGS 12 funcionam de ponta a ponta.**
-> IPCA e Ibovespa ainda não entraram.
+> **Estado atual: as quatro séries funcionam de ponta a ponta** — CDI (série SGS 12), IPCA,
+> dólar (série SGS 1) e Ibovespa. O pipeline extrai, trata, carrega e o dashboard lê da base.
+> Duas identificações de série seguem **pendentes de confirmação oficial** e estão sinalizadas
+> na interface; ver [Séries](#séries) e [Limitações conhecidas](#limitações-conhecidas).
 
-## Público e objetivo
+## Índice
 
-O dashboard é para a equipe de Inteligência Comercial e os assessores, que hoje acompanham os
-indicadores manualmente e precisam de números claros para embasar conversas com clientes.
+- [Para quem é o dashboard](#para-quem-é-o-dashboard)
+- [Como executar do zero](#como-executar-do-zero-windows-11-python-313)
+- [Arquitetura](#arquitetura)
+- [Séries](#séries)
+- [Restrições da API SGS](#restrições-da-api-sgs-verificadas-em-01112026)
+- [Decisões de tratamento](#decisões-de-tratamento)
+- [Comparações do dashboard](#comparações-do-dashboard)
+- [Fórmulas e convenções](#fórmulas-e-convenções)
+- [Verificações](#verificações)
+- [Limitações conhecidas](#limitações-conhecidas)
+
+## Para quem é o dashboard
+
+O case define o público: *"a equipe de Inteligência Comercial da Vêneto acompanha diariamente
+indicadores de mercado para embasar conversas com clientes"*, hoje de forma manual. Não é um
+painel para análise quantitativa nem para operar — é material de **conversa com cliente**. Isso
+determinou três coisas, e cada escolha do dashboard decorre delas.
+
+**1. Quem usa precisa do número para falar, não para investigar.** O número tem de estar
+pronto para ser dito em voz alta, no formato brasileiro, com a data a que se refere ao lado.
+Por isso a primeira seção da tela são **quatro cartões** com a última observação de cada
+indicador e o acumulado em 12 meses — e por isso **os cartões não respondem ao filtro de
+período**: se o assessor mudasse o filtro para montar um gráfico e o cartão mudasse com ele,
+o "CDI em 12 meses" citado na conversa passaria a significar outra coisa sem avisar. A
+semântica do cartão é fixa: última observação, e 12 meses contados até ela.
+
+**2. As perguntas são comparativas, não descritivas.** O case nomeia duas: *"quanto rendeu X
+no período?"* e *"como está a inflação em 12 meses?"*. Nenhuma das duas se responde olhando
+uma série isolada, e é aí que mora o erro que o cliente vai cobrar: dizer que o CDI rendeu
+80% e a inflação foi 28% **não** diz que o ganho real foi 52 p.p. — foi 41%. Por isso há uma
+seção **Comparação no período** com duas visualizações, e só duas:
+
+- **Evolução diária em base 100** responde *"quanto rendeu X no período?"* — ela coloca juros,
+  câmbio e bolsa na mesma escala a partir de uma data comum, o que é a única forma de olhar as
+  três ao mesmo tempo sem comparar pontos com reais e com percentuais ao dia.
+- **Comparação mensal CDI × IPCA** responde *"ganhei da inflação?"* — com o retorno real
+  calculado pela razão entre os fatores, não pela subtração.
+
+**3. Quem apresenta um número responde por ele.** Um assessor que leva um número para o
+cliente precisa saber de onde ele veio e o que ele não garante. Por isso o dashboard mostra
+**avisos no topo** quando há pendência ou possível defasagem, traz a **fonte e a data de
+referência em cada cartão**, e tem um expander de **Metodologia, fontes e limitações** com as
+fórmulas e as pendências abertas. A série 12 aparece rotulada como *"identificação como CDI
+pendente"* justamente porque é mais útil um assessor saber que a identificação está em aberto
+do que receber um rótulo bonito e não verificado.
+
+**O que ficou de fora, de propósito.** Nenhum gráfico de pizza, nenhum medidor, nenhuma
+projeção de rentabilidade futura. A anualização da taxa diária é apresentada como **conversão
+de unidade**, não como "quanto vai render" — a diferença importa quando o número vai para a
+frente de um cliente. Também não há recomendação nem ranking entre os indicadores: as quatro
+séries têm naturezas diferentes e o painel diz isso explicitamente, em vez de insinuar que
+são investimentos equivalentes.
+
+**Estrutura da tela, nesta ordem:** avisos → *Últimos indicadores disponíveis* (4 cartões) →
+filtro de período (barra lateral) → *Evolução no período* (um gráfico por indicador) →
+*Comparação no período* (base 100 e mensal) → *Metodologia, fontes e limitações*. O número que
+vai para a conversa está no topo; o detalhe para quem for questionado está embaixo.
 
 ## Como executar do zero (Windows 11, Python 3.13)
 
@@ -23,13 +80,16 @@ streamlit run app.py                # abre o dashboard
 python -m pytest                    # testes (não dependem de rede)
 ```
 
-Conferências independentes, fora do pipeline:
+Conferências independentes, fora do pipeline — exigem rede:
 
 ```powershell
 python -m scripts.verify_cdi        # anualização da série 12 vs. série 4389 do SGS
 python -m scripts.verify_ipca       # composição de 12 meses da 433 vs. série 13522
-python -m scripts.verify_ptax       # PTAX vs. API Olinda (ver "Verificações")
 ```
+
+`scripts/verify_ptax.py` existe no repositório mas **não está nesta lista de propósito**: a
+parte de rede nunca foi executada e o endereço da API Olinda não foi conferido na documentação
+oficial. Ver [Verificações](#verificações).
 
 Inspeção da base, somente leitura:
 
@@ -42,36 +102,54 @@ python -m scripts.consultar data 2026-10-30  # uma data, nas tabelas bruta e tra
 python -m scripts.consultar sql "SELECT COUNT(*) FROM observations"
 ```
 
+A base é um arquivo SQLite (`data/indicadores.db`) e pode ser aberta no **DB Browser for
+SQLite** para inspeção visual, sem risco de alterar nada se aberta em modo leitura.
+
 ## Arquitetura
 
 ```
-fontes (SGS/BCB)  ->  src/extract.py  ->  src/transform.py  ->  src/load.py  ->  SQLite  ->  app.py
-                      blocos anuais,      limpeza, 3 categorias  UPSERT em       (data/)     lê só a base,
-                      timeout, retry      e validação            transação                   nunca a fonte
-                                               |
-                                          src/metrics.py (cálculos puros)
+SGS / BCB  ->  src/extract.py     \
+                                    ->  src/transform.py  ->  src/load.py  ->  SQLite  ->  app.py
+yfinance   ->  src/extract_yf.py  /    limpeza, 3 categorias  UPSERT em       (data/)     lê só a base,
+                                       e validação            transação                   nunca a fonte
+               blocos anuais,                |
+               timeout, retry          src/metrics.py (cálculos puros)
+                                       src/charts.py  (escala e eixos)
+                                       src/freshness.py (atualidade)
 ```
+
+As duas fontes são normalizadas para o **mesmo formato bruto** antes do tratamento, então
+`transform.py` não sabe de onde o dado veio — é o que permite que as três categorias de
+qualidade, a checagem de cobertura e os testes valham igualmente para as quatro séries.
 
 | Arquivo | Papel |
 |---|---|
 | `src/config.py` | Séries, janelas, margens, faixas de alerta, timeouts |
 | `src/extract.py` | Consulta o SGS em blocos anuais, com timeout e retentativas |
+| `src/extract_yf.py` | Consulta o Ibovespa via yfinance e normaliza para o formato do SGS |
 | `src/transform.py` | Padronização, três categorias de qualidade, checagem de cobertura |
-| `src/metrics.py` | Cálculos financeiros, funções puras (capitalização, 12 meses, anualização, base 100) |
+| `src/metrics.py` | Cálculos financeiros, funções puras (capitalização, 12 meses, anualização, base 100, retorno real) |
+| `src/freshness.py` | Avaliação de atualidade (dias para séries diárias, meses para a mensal) |
+| `src/charts.py` | Escala, eixos e cores dos gráficos — separado do app para ser testável |
 | `src/db.py` / `src/load.py` | Esquema SQLite, migração e carga idempotente |
 | `src/pipeline.py` | Orquestra as etapas e registra cada execução |
+| `src/clock.py` · `src/ptbr.py` | Relógio injetável (testes) e formatação brasileira de datas e números |
 | `app.py` | Dashboard (lê somente a base) |
-| `scripts/verify_ptax.py` · `scripts/verify_cdi.py` | Conferências independentes |
+| `scripts/verify_cdi.py` · `verify_ipca.py` · `verify_ptax.py` | Conferências independentes |
 | `scripts/consultar.py` | Inspeção da base, somente leitura |
 
 ## Séries
 
-| Indicador | Fonte | Código | Unidade | Frequência | Margem | Situação |
+| Indicador | Fonte | Código | Unidade | Frequência | Margem | Identificação |
 |---|---|---|---|---|---|---|
-| Dólar americano (venda) | Banco Central — SGS | 1 | R$/US$ | diária (dias úteis) | — | implementado, **identificação como PTAX de fechamento pendente** |
-| Série SGS 12 | Banco Central — SGS | 12 | % ao dia | diária (dias úteis) | 12 meses | implementado, **identificação pendente** |
-| IPCA — variação mensal | Banco Central — SGS (apuração: IBGE) | 433 | % ao mês | mensal | 12 meses | implementado, **identificação confirmada** |
-| Ibovespa | yfinance `^BVSP` (apuração: B3) | — | pontos | diária (pregões) | — | implementado |
+| Dólar americano (venda) | Banco Central — SGS | 1 | R$/US$ | diária (dias úteis) | — | **pendente** como PTAX de fechamento |
+| Série SGS 12 (CDI) | Banco Central — SGS | 12 | % ao dia | diária (dias úteis) | 12 meses | **pendente** |
+| IPCA — variação mensal | Banco Central — SGS (apuração: IBGE) | 433 | % ao mês | mensal | 12 meses | **confirmada** |
+| Ibovespa | yfinance `^BVSP` (apuração: B3) | — | pontos | diária (pregões) | — | fonte de terceiros, não oficial |
+
+As quatro estão implementadas e carregando. A coluna "Identificação" trata de outra coisa: se
+a documentação oficial confirma **que a série é o indicador pedido no case**. É uma pendência
+de evidência, não de código.
 
 ### Série 1 — o que foi e o que não foi confirmado
 
@@ -92,10 +170,12 @@ ponto conferido, sem ter estabelecido que é a série pedida.
 ### Série 12 — identificação NÃO confirmada
 
 **Os metadados oficiais do SGS para esta série não puderam ser consultados.** O portal do SGS
-(`www3.bcb.gov.br/sgspub`) responde "Requisição inválida", e buscas restritas ao portal de dados
-abertos do BCB não localizaram entrada para o CDI — o que não prova que ela não exista.
-Portanto **nome, unidade e periodicidade seguem não confirmados por fonte oficial**, e a
-interface identifica a série como *"Série SGS 12 — identificação como CDI pendente"*.
+(`www3.bcb.gov.br/sgspub`) responde "Requisição inválida"; a página de metadados de juros do
+BCB (`mg45p`) documenta apenas séries da Selic, sem mencionar o CDI nem os códigos 12 e 4389;
+e buscas restritas ao portal de dados abertos não localizaram entrada para o CDI. **Não
+encontrado não é inexistente** — o caminho certo pode existir. Portanto **nome, unidade e
+periodicidade seguem não confirmados por fonte oficial**, e a interface identifica a série
+como *"Série SGS 12 — identificação como CDI pendente"*.
 
 O que **está** confirmado, e sobre o que: a B3 documenta que a Taxa DI é apurada a cada dia
 útil e que "as taxas são expressas sob forma anual", "ao ano de 252 dias úteis". Isso ancora a
@@ -132,9 +212,11 @@ Conferências numéricas feitas na coleta, contra o fascículo do IBGE de dezemb
 ### Ibovespa — fonte de terceiros, com armadilhas próprias
 
 O yfinance lê dados do Yahoo Finance. **Não é fonte oficial e não tem contrato de
-estabilidade**; o índice é apurado pela B3. Verificações feitas na biblioteca instalada
-(yfinance 1.7.0) em 01/11/2026, todas com valor explícito na chamada para não depender
-de padrão:
+estabilidade**; o índice é apurado pela B3. O case pede essa biblioteca explicitamente, então
+a dependência é da especificação — mas o risco permanece e está registrado nas limitações.
+
+Verificações feitas na biblioteca instalada (yfinance 1.7.0) em 01/11/2026, todas com valor
+explícito na chamada para não depender de padrão:
 
 | Armadilha | Consequência |
 |---|---|
@@ -192,10 +274,10 @@ bloco anterior; uma janela inteira de um dia é rejeitada com erro explícito.
 
 - **Exibição:** últimos 5 anos corridos, `[hoje - 5 anos, hoje]`, inclusive nas duas pontas, com
   "hoje" no fuso de Brasília.
-- **Extração:** a de exibição recuada pela `margin_months` da série. A série 12 recua 12 meses,
-  porque o acumulado de 12 meses na primeira data exibida precisa de dados anteriores a ela. A
-  margem fica armazenada e é excluída dos gráficos — por isso a série 12 tem mais observações
-  que a PTAX.
+- **Extração:** a de exibição recuada pela `margin_months` da série. As séries 12 e 433 recuam
+  12 meses, porque o acumulado de 12 meses na primeira data exibida precisa de dados anteriores
+  a ela. A margem fica armazenada e é excluída dos gráficos — por isso essas duas séries têm
+  mais observações na base do que o período exibido.
 - **Blocos anuais**, pelo limite de 10 anos por consulta do SGS.
 
 ### Três categorias de qualidade
@@ -203,7 +285,7 @@ bloco anterior; uma janela inteira de um dia é rejeitada com erro explícito.
 | Categoria | Ação | Regra |
 |---|---|---|
 | **Inválido** | rejeita e conta | data malformada, valor não numérico, valor não finito (NaN, ±inf) |
-| **Impossível pela definição** | rejeita e conta | só onde a definição impede: PTAX ≤ 0 |
+| **Impossível pela definição** | rejeita e conta | só onde a definição impede: cotação de câmbio ≤ 0 e índice de ações ≤ 0 |
 | **Atípico** | **carrega**, conta e sinaliza | fora da faixa de alerta, por nível **ou** por variação |
 
 Há **duas regras de alerta independentes**, ambas apenas sinalizando:
@@ -215,9 +297,11 @@ A marca gravada é a união das duas; o relatório da execução conta cada uma.
 pede conferência humana e não declara erro** — o próprio caso do Ibovespa mostra por quê:
 o pregão sinalizado estava correto.
 
-**Limite de variação do Ibovespa: 10%**, provisório e configurável. A âncora é o circuit
-breaker da B3, que suspende as negociações quando o índice cai 10% ante o fechamento
-anterior — o patamar que o próprio mercado trata como excepcional. Limitações conhecidas:
+#### Limite de variação do Ibovespa: 10%
+
+Provisório e configurável. A âncora é o circuit breaker da B3, que suspende as negociações
+quando o índice cai 10% ante o fechamento anterior — o patamar que o próprio mercado trata
+como excepcional. Limitações conhecidas:
 
 - é aplicado **simetricamente** a altas, o que a regra do circuit breaker não faz;
 - **não** foi derivado da distribuição dos 5 anos, e **não** foi calibrado para os dois
@@ -227,13 +311,18 @@ anterior — o patamar que o próprio mercado trata como excepcional. Limitaçõ
 
 Derivar o limite da distribuição real dos 5 anos é melhoria prevista.
 
+#### Outras regras de valor
+
 - Valor ausente **nunca** vira zero.
 - Taxa **zero** é válida na série 12. Taxa **negativa** é carregada e sinalizada, nunca
   rejeitada: juros negativos não são impossíveis por definição, e descartar esconderia o caso.
-- Faixa de alerta da série 12: `[0; 0,5]` % a.d., **configurável** em `src/config.py` e
-  **provisória**. É **regra operacional** para chamar atenção humana — **não** é garantia de
-  detectar troca de unidade da série nem separador decimal deslocado.
-- A faixa da PTAX não foi definida nesta etapa.
+- Faixa de alerta da série 12: `[0; 0,5]` % a.d.; da série 433: `[−2; 3]` % ao mês. Ambas
+  **configuráveis** em `src/config.py` e **provisórias**. São **regras operacionais** para
+  chamar atenção humana — **não** são garantia de detectar troca de unidade da série nem
+  separador decimal deslocado.
+- A faixa por nível da série 1 e do Ibovespa não foi definida: um câmbio ou um índice não têm
+  teto plausível estável ao longo de 5 anos. O Ibovespa é coberto pela regra de variação; a
+  série 1 não tem nenhuma das duas (ver limitações).
 - Duplicidade: chave `(indicador, data)`; vale a última ocorrência, e datas com valores
   conflitantes são contadas.
 - **Data de referência x coleta:** `ref_date` é a data do dado; `fetched_at` (UTC) é quando foi
@@ -246,10 +335,10 @@ Derivar o limite da distribuição real dos 5 anos é melhoria prevista.
 Esta é a limitação mais importante do projeto, e está declarada no código, nos testes e no
 dashboard.
 
-`MAX_GAP_DAYS = 10` detecta **interrupção prolongada** da fonte — um bloco que não veio, uma
-indisponibilidade. Ele **não detecta ausência isolada**: um dia útil faltando no meio da semana
-produz lacuna de 2 dias, e uma segunda após feriado prolongado chega a 5 ou 6 — todos muito
-abaixo do limite.
+O limite de lacuna detecta **interrupção prolongada** da fonte — um bloco que não veio, uma
+indisponibilidade. Ele **não detecta ausência isolada**: numa série diária, um dia útil
+faltando no meio da semana produz lacuna de 2 dias, e uma segunda após feriado prolongado
+chega a 5 ou 6 — todos muito abaixo do limite.
 
 Consequências:
 
@@ -259,9 +348,9 @@ Consequências:
 - O rótulo "12 meses" significa *a janela foi percorrida sem interrupção prolongada*, **não**
   *todo dia útil está presente*.
 
-A completude da PTAX (49 dias úteis sem cotação, todos feriados nacionais) foi verificada por
-**inspeção humana sobre um retrato**, uma vez. Não é garantia automática e não se repete sozinha
-nas próximas execuções.
+A completude da série 1 (49 dias úteis sem cotação, todos feriados nacionais) foi verificada
+por **inspeção humana sobre um retrato**, uma vez. Não é garantia automática e não se repete
+sozinha nas próximas execuções.
 
 O limite é **por série**, derivado do calendário de cada uma:
 
@@ -292,18 +381,9 @@ atraso real.
 Quando houver ausência conhecida e ainda não explicada dentro da janela, ela é registrada em
 `Series.unexplained_absences` e a métrica **não** é apresentada como completa.
 
-### Escala dos gráficos
-
-O eixo vertical é ajustado à faixa dos dados do período, com margem de 5% da amplitude, e **não
-começa em zero**. São gráficos de linha para acompanhar o **movimento** de uma cotação ou de uma
-taxa, não para comparar magnitudes entre categorias — num gráfico de barras a base zero seria
-obrigatória, aqui não é. Começando em zero, a variação da PTAX de 4,62 a 6,21 vira uma linha
-quase reta. Os gráficos não levam título: o eixo informa unidade e período, e um título
-interpretativo sugeriria leitura que os dados sozinhos não sustentam.
-
 ### Calendários das séries diárias
 
-As séries diárias **não** compartilham calendário. Medido na base, PTAX e Ibovespa
+As séries diárias **não** compartilham calendário. Medido na base, as séries 1 e Ibovespa
 divergem em **8 datas** na janela de 5 anos, todas com cotação de câmbio e sem pregão:
 
 | Data | Dia |
@@ -317,9 +397,6 @@ divergem em **8 datas** na janela de 5 anos, todas com cotação de câmbio e se
 calendário de negociação antes do Banco Central, mas **não foi verificado** contra o
 calendário oficial da B3 e portanto **não está registrado como explicado**. Fica como
 padrão observado, a confirmar.
-
-A série 12 também termina um dia antes das outras duas (29/10 contra 30/10 em
-01/11/2026) — ver limitações.
 
 Consequência de projeto: a comparação entre séries diárias **não alinha datas**. Cada
 série é desenhada nas suas próprias, sem preenchimento e sem exclusão de observação; o
@@ -343,6 +420,11 @@ Compara a série 12 (taxa), o dólar e o Ibovespa (níveis).
   de câmbio e um índice de ações. Não é comparação de investimentos equivalentes, e
   nenhuma das três considera custos, impostos ou viabilidade de replicação.
 
+**Por que não interseção de datas.** A alternativa seria manter só as datas presentes nas
+três séries. Ela foi rejeitada: se há taxa da série 12 num dia sem pregão, descartar essa
+data **antes** de capitalizar apagaria um dia de rendimento do acumulado. Cada série é
+acumulada no seu próprio calendário; o alinhamento acontece só na hora de desenhar.
+
 ### Comparação mensal: série 12 e IPCA
 
 Entram apenas **meses inteiros** contidos no filtro, com o índice mensal publicado e com
@@ -356,7 +438,9 @@ Retorno real **pela razão entre os fatores**:
 real = (1 + taxa/100) ÷ (1 + inflação/100) − 1
 ```
 
-Subtrair uma taxa da outra dá resultado parecido e errado.
+Subtrair uma taxa da outra dá resultado parecido e errado. Na janela de 5 anos a diferença
+entre os dois métodos é grande o bastante para mudar a conversa: 80,38% de CDI contra 27,87%
+de IPCA dão **41,07%** de ganho real, não os 52,51 p.p. da subtração.
 
 **Limitação:** a checagem de cobertura de cada mês detecta interrupção prolongada, não
 ausência isolada — um dia útil faltando dentro de um mês passaria sem alarme e
@@ -373,6 +457,14 @@ checagens. O amarelo fica a 2,99:1 de contraste em fundo claro, logo abaixo de 3
 isso o gráfico de barras traz legenda e os acumulados aparecem em números grandes
 acima dele.
 
+**O eixo vertical das linhas não começa em zero**, e é ajustado à faixa dos dados do período
+com margem de 5% da amplitude. São gráficos de linha para acompanhar o **movimento** de uma
+cotação ou de uma taxa, não para comparar magnitudes entre categorias: começando em zero, a
+variação do dólar de 4,62 a 6,21 vira uma linha quase reta. **Nas barras é o contrário** — ali
+a base zero é obrigatória, porque barras comparam magnitudes e cortar o eixo distorceria a
+leitura. Os gráficos não levam título: o eixo informa unidade e período, e um título
+interpretativo sugeriria leitura que os dados sozinhos não sustentam.
+
 **As barras recebem a ordem cronológica explicitamente.** Os rótulos dos meses são texto
 no formato brasileiro (`11/2025`); sem ordem declarada, a biblioteca os ordena
 alfabeticamente, agrupando todos os janeiros e depois todos os fevereiros. O formato ISO
@@ -387,11 +479,8 @@ janela de 3 dias e de 5 anos.
 ### Filtro de período
 
 12 meses, 24 meses, 5 anos e personalizado. Afeta os gráficos de evolução e as duas
-comparações, e define a data-base do rebase.
-
-**Os cartões não mudam com o filtro.** Ficam numa seção própria, "Últimos indicadores
-disponíveis", com semântica fixa — última observação e acumulado nos 12 meses até ela —
-e período e data de referência explícitos em cada um.
+comparações, e define a data-base do rebase. **Os cartões não mudam com o filtro** — a razão
+está em [Para quem é o dashboard](#para-quem-é-o-dashboard).
 
 ## Fórmulas e convenções
 
@@ -402,6 +491,7 @@ acum12m(D) = [ ∏ (1 + taxa_i/100) − 1 ] × 100,   i ∈ (D − 1 ano, D]
 ```
 
 Limite inferior **aberto**, superior **fechado**, para não contar o dia-âncora duas vezes.
+Capitalização composta, nunca soma de taxas.
 
 > **Convenção provisória.** Se a taxa publicada para o dia D remunera o próprio dia D ou a noite
 > de D para o dia útil seguinte é **pendência não resolvida**. Errar isso desloca o acumulado em
@@ -416,16 +506,21 @@ anual(d) = [ (1 + d/100)^252 − 1 ] × 100
 ```
 
 Apresentada como **conversão de unidade** da taxa de um dia específico, não como projeção de
-rendimento. Nunca soma de taxas; nunca multiplicação da diária por um número de dias.
+rendimento. Nunca multiplicação da diária por um número de dias.
+
+**Retorno real:** razão entre os fatores, nunca subtração — ver
+[Comparação mensal](#comparação-mensal-série-12-e-ipca).
 
 **Ano bissexto:** 29/02 menos um ano recai em 28/02, o que torna a janela de 366 dias. Convenção
 declarada e coberta por teste.
 
 ## Verificações
 
-- **Testes automatizados (`pytest`):** 196 testes, com dados controlados, **sem rede**. O dublê
-  da fonte reproduz as recusas reais do SGS (400 em intervalo de um dia, 404 em intervalo vazio),
-  para não ser mais permissivo que o serviço.
+- **Testes automatizados (`pytest`): 315 passando e 1 pulado**, com dados controlados e **sem
+  rede**. O dublê da fonte reproduz as recusas reais do SGS (400 em intervalo de um dia, 404 em
+  intervalo vazio) e o comportamento real do yfinance, porque um dublê mais permissivo que o
+  serviço faz o teste passar enquanto a produção falha — foi o que aconteceu três vezes neste
+  projeto.
 - **Extração real do SGS:** executada em 01/11/2026 para a série 1 — 1.256 observações de
   01/11/2021 a 30/10/2026, com as 49 ausências em dia útil conferidas uma a uma como feriados
   nacionais.
@@ -445,45 +540,56 @@ declarada e coberta por teste.
   ±0,067 p.p. no pior caso. Isso valida a composição e a convenção da janela mensal; **não**
   identifica a série 13522, cujos metadados não foram localizados, e **não** vale para a
   convenção de séries diárias.
-- **`scripts/verify_ptax.py`:** a parte de rede **ainda não foi executada e o endereço da Olinda
-  não foi conferido** na documentação oficial.
+- **`scripts/verify_ptax.py`: não funcional.** A parte de rede **nunca foi executada** e o
+  endereço da API Olinda **não foi conferido** na documentação oficial. O arquivo está no
+  repositório como esqueleto da conferência pendente, não como ferramenta utilizável.
 
 ## Limitações conhecidas
 
-- **Série 12: identificação não confirmada** por metadados oficiais. A página de metadados de
-  juros do BCB (`mg45p`) documenta apenas séries da Selic. **Não encontrado não é inexistente**:
-  o portal do SGS responde "Requisição inválida" e o caminho certo pode existir.
+**Identificação de séries**
+
+- **Série 12: identificação não confirmada** por metadados oficiais — ver
+  [Série 12](#série-12--identificação-não-confirmada).
+- **Identidade metodológica da série 1** como PTAX de fechamento segue em aberto, e a
+  conferência pela API Olinda não foi feita — ver [Série 1](#série-1--o-que-foi-e-o-que-não-foi-confirmado).
 - **Séries 4389 e 13522: identificação não confirmada**, pela mesma razão. Ambas são usadas
   apenas em scripts de conferência, fora da entrega.
-- **Calendário oficial de divulgação do IBGE não consultado** — ver "Atualidade dos dados".
-- **Ibovespa vem de fonte de terceiros** (yfinance/Yahoo), sem contrato de estabilidade,
-  e os padrões dessa biblioteca já mudaram entre versões. Todos os parâmetros relevantes
-  são passados explicitamente, mas uma mudança de comportamento da fonte continua sendo
-  risco.
-- **Movimento de 05/10/2026 no Ibovespa (+7,70%) não conferido** contra fonte
-  independente.
+
+**Completude e calendários**
+
+- **A checagem de cobertura não detecta ausência isolada.** Fechar isso exigiria um calendário
+  de dias úteis **por série**, com as exceções históricas de cada uma — a série 12 segue o
+  calendário da B3 e a série 1 o do BCB, que podem divergir. Ficou fora desta etapa.
+- **As 8 datas divergentes entre as séries 1 e Ibovespa não foram verificadas** contra o
+  calendário oficial da B3 — ver [Calendários](#calendários-das-séries-diárias).
+- **A série 12 termina um dia antes** da série 1 e do Ibovespa (29/10 contra 30/10, na carga de
+  01/11/2026). Defasagem de publicação é **hipótese**, não conclusão: calendários diferentes
+  também explicariam, e comparar as datas das duas séries não resolve. A ponta será reconferida
+  em execução posterior.
+- **Calendário oficial de divulgação do IBGE não consultado** — ver
+  [Atualidade dos dados](#atualidade-dos-dados).
+
+**Regras de alerta**
+
 - **Limite de variação do Ibovespa não derivado dos 5 anos.** Na carga de 01/11/2026 ele
   gerou **um único alerta** em 1.248 pregões (26/10/2026, conferido e correto). Isso
   mostra que a regra gerou poucos alertas **nesta amostra**; não comprova que detecta
   todos os problemas possíveis.
-- **A PTAX não tem alerta de variação.** O mesmo evento de 26/10/2026 aparece nela
+- **A série 1 não tem alerta de variação.** O mesmo evento de 26/10/2026 aparece nela
   (+9,19%, de 5,0377 para 5,5007) e não é sinalizado, porque nenhuma regra foi
   configurada para essa série. Melhoria prevista; exigiria um limite próprio, já que
   câmbio e índice de ações têm volatilidades diferentes. Note também que esses +9,19%
   **não** são os +8,2% citados na imprensa para o "dólar de fechamento": são
   referências distintas e não devem ser tratadas como o mesmo número.
-- **As 8 datas divergentes entre PTAX e Ibovespa não foram verificadas** contra o
-  calendário oficial da B3 — ver "Calendários das séries diárias".
-- **A série 12 termina um dia antes** da PTAX e do Ibovespa (29/10 contra 30/10 em
-  01/11/2026). Defasagem de publicação é hipótese, não conclusão.
-- **Convenção de datas do acumulado:** provisória.
-- **A checagem de cobertura não detecta ausência isolada.** Fechar isso exigiria um calendário
-  de dias úteis **por série**, com as exceções históricas de cada uma — a série 12 segue o
-  calendário da B3 e a série 1 o do BCB, que podem divergir. Ficou fora desta etapa.
-- **Ausência de 30/10/2026 na série 12:** a série termina em 29/10 enquanto a PTAX vai até 30/10.
-  Defasagem de publicação é **hipótese**, não conclusão: calendários diferentes também
-  explicariam, e comparar as datas das duas séries não resolve. A ponta será reconferida em
-  execução posterior.
-- **Identidade metodológica da série 1** (PTAX de fechamento) e a API Olinda seguem em aberto.
+- **Movimento de 05/10/2026 no Ibovespa (+7,70%) não conferido** contra fonte independente.
+
+**Fonte e convenções**
+
+- **Ibovespa vem de fonte de terceiros** (yfinance/Yahoo), sem contrato de estabilidade,
+  e os padrões dessa biblioteca já mudaram entre versões. Todos os parâmetros relevantes
+  são passados explicitamente, mas uma mudança de comportamento da fonte continua sendo
+  risco.
+- **Convenção de datas do acumulado diário:** provisória — ver
+  [Fórmulas](#fórmulas-e-convenções).
 - A carga não remove observações que a fonte deixe de publicar (tratamento de revisões
-  históricas fica para o bônus incremental).
+  históricas fica para o bônus incremental, não implementado).
