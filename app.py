@@ -376,7 +376,8 @@ else:
         )
         cores_mensal = {nome_taxa: SERIES["cdi"].color, nome_ipca: SERIES["ipca"].color}
         st.altair_chart(
-            charts.bar_chart(barras, "% no mês", 2, cores_mensal), width="stretch"
+            charts.bar_chart(barras, "% no mês", 2, cores_mensal, x_order=rotulos),
+            width="stretch",
         )
         st.caption(
             "**Retorno real pela razão:** (1 + taxa) ÷ (1 + inflação) − 1. Subtrair uma "

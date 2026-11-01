@@ -139,3 +139,18 @@ def test_cada_indicador_tem_cor_propria_e_distinta():
     cores = [s.color for s in SERIES.values()]
     assert len(set(cores)) == len(cores), "dois indicadores com a mesma cor"
     assert all(c.startswith("#") and len(c) == 7 for c in cores)
+
+
+def test_barras_respeitam_a_ordem_cronologica_informada():
+    """Rótulos como '11/2025' são texto: sem ordem explícita saem em ordem alfabética,
+    agrupando todos os janeiros, depois todos os fevereiros."""
+    ordem = ["11/2025", "12/2025", "01/2026", "02/2026"]
+    frame = pd.DataFrame({"mes": ordem, "valor": [1.0] * 4, "serie": ["A"] * 4})
+    spec = charts.bar_chart(frame, "% no mês", 2, {"A": "#3987e5"}, x_order=ordem).to_dict()
+    assert spec["encoding"]["x"]["sort"] == ordem
+
+
+def test_sem_ordem_informada_a_biblioteca_decide():
+    frame = pd.DataFrame({"mes": ["11/2025"], "valor": [1.0], "serie": ["A"]})
+    spec = charts.bar_chart(frame, "% no mês", 2, {"A": "#3987e5"}).to_dict()
+    assert spec["encoding"]["x"].get("sort") is None

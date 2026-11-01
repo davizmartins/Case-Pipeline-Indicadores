@@ -373,6 +373,12 @@ checagens. O amarelo fica a 2,99:1 de contraste em fundo claro, logo abaixo de 3
 isso o gráfico de barras traz legenda e os acumulados aparecem em números grandes
 acima dele.
 
+**As barras recebem a ordem cronológica explicitamente.** Os rótulos dos meses são texto
+no formato brasileiro (`11/2025`); sem ordem declarada, a biblioteca os ordena
+alfabeticamente, agrupando todos os janeiros e depois todos os fevereiros. O formato ISO
+(`2025-11`) ordenava certo por acidente — a tradução para o formato brasileiro expôs a
+dependência.
+
 **O eixo de datas usa granularidade de dia.** Sem isso, um período curto fazia a
 biblioteca rotular o eixo em **horas** ("09 PM", "03 AM") sobre dados diários,
 sugerindo observações intradiárias que não existem. Há teste cobrindo os dois extremos,

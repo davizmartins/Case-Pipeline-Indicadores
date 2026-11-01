@@ -106,6 +106,7 @@ def bar_chart(
     value_col: str = "valor",
     series_col: str = "serie",
     x_col: str = "mes",
+    x_order: list[str] | None = None,
     height: int = 320,
 ) -> alt.Chart:
     """Barras agrupadas por período — usado na comparação mensal.
@@ -117,7 +118,10 @@ def bar_chart(
         alt.Chart(frame)
         .mark_bar()
         .encode(
-            x=alt.X(f"{x_col}:N", title="Mês"),
+            # A ordem precisa ser dada: rótulos como "11/2025" são texto, e sem
+            # `sort` a biblioteca os ordena ALFABETICAMENTE — todos os janeiros
+            # juntos, depois todos os fevereiros.
+            x=alt.X(f"{x_col}:N", title="Mês", sort=x_order),
             y=alt.Y(f"{value_col}:Q", title=y_title, axis=alt.Axis(format=f".{decimals}f")),
             color=alt.Color(
                 f"{series_col}:N",
