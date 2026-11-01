@@ -26,6 +26,17 @@ python -m pytest                    # testes (não dependem de rede)
 python -m scripts.verify_ptax       # conferência da PTAX contra a API Olinda (ver "Verificações")
 ```
 
+Para inspecionar a base sem escrever SQL na mão:
+
+```powershell
+python -m scripts.consultar                  # resumo e últimas execuções
+python -m scripts.consultar ultimos          # últimas observações
+python -m scripts.consultar lacunas          # maiores intervalos entre datas
+python -m scripts.consultar duplicadas       # datas repetidas (deve vir vazio)
+python -m scripts.consultar data 2026-10-30  # uma data, nas tabelas bruta e tratada
+python -m scripts.consultar sql "SELECT COUNT(*) FROM observations"
+```
+
 ## Arquitetura
 
 ```
@@ -43,6 +54,7 @@ fontes (SGS/BCB)  ->  src/extract.py  ->  src/transform.py  ->  src/load.py  -> 
 | `src/pipeline.py` | Orquestra as etapas e registra cada execução |
 | `app.py` | Dashboard (lê somente a base) |
 | `scripts/verify_ptax.py` | Conferência independente da PTAX (fora do pipeline) |
+| `scripts/consultar.py` | Consultas de inspeção à base, somente leitura (fora do pipeline) |
 
 ## Séries
 
