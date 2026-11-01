@@ -15,8 +15,7 @@ Convenções declaradas (e testadas):
 
 from __future__ import annotations
 
-import math
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 
@@ -153,6 +152,133 @@ def accumulated_12m(
         "end": end_inclusive,
         "n_obs": len(window),
     }
+
+
+# --- comparação entre séries -------------------------------------------------
+#
+# As séries diárias têm calendários próprios e COMPROVADAMENTE diferentes (PTAX e
+# Ibovespa divergem em 8 datas na janela de 5 anos). A comparação NÃO alinha as datas:
+# cada série é desenhada nos seus próprios pontos, sem preenchimento e sem exclusão de
+# observação. O único ponto compartilhado é a data-base do rebase.
+
+
+def common_base_date(frames: list[pd.DataFrame], start: date, end: date) -> str | None:
+    """Primeira data dentro de [start, end] com observação em TODAS as séries.
+
+    Devolve None quando não existe data comum no período — nesse caso não há base
+    honesta para o rebase e a comparação não deve ser apresentada.
+    """
+    if not frames or any(f.empty for f in frames):
+        return None
+    comuns = set.intersection(*(set(f["ref_date"]) for f in frames))
+    lo, hi = start.isoformat(), end.isoformat()
+    dentro = sorted(d for d in comuns if lo <= d <= hi)
+    return dentro[0] if dentro else None
+
+
+def index_level(frame: pd.DataFrame, base_date: str) -> pd.DataFrame:
+    """Série de NÍVEL em base 100: valor(d) / valor(base) × 100, de base_date em diante."""
+    sel = frame[frame["ref_date"] >= base_date].sort_values("ref_date")
+    if sel.empty or sel.iloc[0]["ref_date"] != base_date:
+        raise ValueError(f"série sem observação na data-base {base_date}")
+    base = float(sel.iloc[0]["value"])
+    if base == 0:
+        raise ValueError(f"valor-base zero em {base_date}")
+    return pd.DataFrame(
+        {
+            "ref_date": sel["ref_date"].to_numpy(),
+            "index": [100.0 * float(v) / base for v in sel["value"]],
+        }
+    )
+
+
+def index_rate(frame: pd.DataFrame, base_date: str) -> pd.DataFrame:
+    """Série de TAXA em base 100, capitalizada no calendário DELA MESMA.
+
+    Entram as taxas das datas em (base_date, d] — limite inferior ABERTO, a mesma
+    convenção do acumulado em 12 meses. A taxa publicada NA data-base não entra: na
+    data-base o índice vale 100 por definição.
+    """
+    if frame.empty or base_date not in set(frame["ref_date"]):
+        raise ValueError(f"série sem observação na data-base {base_date}")
+    posteriores = frame[frame["ref_date"] > base_date].sort_values("ref_date")
+    fatores = (1.0 + posteriores["value"].astype(float) / 100.0).cumprod()
+    return pd.DataFrame(
+        {
+            "ref_date": [base_date] + list(posteriores["ref_date"]),
+            "index": [100.0] + [100.0 * float(f) for f in fatores],
+        }
+    )
+
+
+# --- comparação mensal -------------------------------------------------------
+
+
+def month_bounds(year: int, month: int) -> tuple[date, date]:
+    """Limites de um mês no formato (EXCLUSIVO inferior, INCLUSIVO superior)."""
+    primeiro = date(year, month, 1)
+    proximo = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+    return primeiro - timedelta(days=1), proximo - timedelta(days=1)
+
+
+def monthly_rate_accumulation(
+    frame: pd.DataFrame, year: int, month: int, max_gap_days: int
+) -> dict:
+    """Acumula uma série de taxa dentro de um mês, com a checagem de cobertura.
+
+    ALCANCE: a checagem detecta interrupção prolongada, não ausência isolada.
+    """
+    inicio_excl, fim = month_bounds(year, month)
+    cov = coverage(frame, inicio_excl, fim, max_gap_days)
+    janela = select_window(frame, inicio_excl, fim)
+    return {
+        "value": accumulate(janela["value"]) if cov["ok"] else None,
+        "coverage": cov,
+        "n_obs": len(janela),
+    }
+
+
+def real_return(nominal_pct: float, inflation_pct: float) -> float:
+    """Retorno real pela RAZÃO entre os fatores, nunca pela diferença entre as taxas."""
+    return ((1.0 + nominal_pct / 100.0) / (1.0 + inflation_pct / 100.0) - 1.0) * 100.0
+
+
+def eligible_months(
+    rate_frame: pd.DataFrame,
+    monthly_frame: pd.DataFrame,
+    start: date,
+    end: date,
+    max_gap_days: int,
+) -> list[dict]:
+    """Meses INTEIROS dentro de [start, end] comparáveis entre as duas séries.
+
+    Um mês entra quando: cabe inteiro no período filtrado, a série mensal tem
+    observação para ele, e a série de taxa tem cobertura suficiente no mês. O último
+    mês elegível sai DOS DADOS — nada é fixado no código.
+    """
+    if rate_frame.empty or monthly_frame.empty:
+        return []
+    mensais = {d[:7]: float(v) for d, v in zip(monthly_frame["ref_date"], monthly_frame["value"])}
+    out: list[dict] = []
+    ano, mes = start.year, start.month
+    while date(ano, mes, 1) <= end:
+        primeiro = date(ano, mes, 1)
+        _, ultimo = month_bounds(ano, mes)
+        chave = f"{ano:04d}-{mes:02d}"
+        if primeiro >= start and ultimo <= end and chave in mensais:
+            acum = monthly_rate_accumulation(rate_frame, ano, mes, max_gap_days)
+            if acum["value"] is not None:
+                out.append(
+                    {
+                        "mes": chave,
+                        "taxa": acum["value"],
+                        "mensal": mensais[chave],
+                        "real": real_return(acum["value"], mensais[chave]),
+                        "n_obs": acum["n_obs"],
+                    }
+                )
+        ano, mes = (ano + 1, 1) if mes == 12 else (ano, mes + 1)
+    return out
 
 
 def decimals_in(text: str) -> int:
