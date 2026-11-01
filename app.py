@@ -65,11 +65,15 @@ for key, series in SERIES.items():
         st.warning(f"**{series.name}** — {aviso}")
     if int(df["atypical"].sum()):
         st.warning(
-            f"**{series.name}** — {int(df['atypical'].sum())} observação(ões) fora da faixa "
-            "de alerta. Elas foram carregadas e estão sinalizadas, não descartadas."
+            f"**{series.name}** — {int(df['atypical'].sum())} observação(ões) sinalizada(s) "
+            "para revisão, por destoarem da faixa de alerta ou do valor anterior. Foram "
+            "carregadas sem substituição: a sinalização **pede conferência humana e não "
+            "declara erro**.",
+            icon="🔎",
         )
 
-col_ptax, col_cdi, col_ipca = st.columns(3)
+col_ptax, col_cdi = st.columns(2)
+col_ipca, col_ibov = st.columns(2)
 
 
 def acumulado_12m(series, df):
@@ -179,6 +183,38 @@ with col_ipca:
         )
         st.caption(f"Fonte: {s.source}")
         st.altair_chart(charts.line_chart(df, s.unit, 2), width="stretch")
+
+# --- Cartão: Ibovespa --------------------------------------------------------
+with col_ibov:
+    s = SERIES["ibovespa"]
+    df = data["ibovespa"]
+    st.subheader(s.name)
+    if s.identification_note and s.identification_alert:
+        st.info(s.identification_note, icon="⚠️")
+    if df.empty:
+        st.error("Sem observações. Execute `python -m src.pipeline`.")
+    else:
+        ultimo = df.iloc[-1]
+        delta = fmt_pct((ultimo["value"] / df.iloc[-2]["value"] - 1) * 100) if len(df) > 1 else None
+        st.metric(
+            label=f"Fechamento — {s.unit}",
+            value=fmt_number(ultimo["value"], 0),
+            delta=delta,
+            help="Variação em relação ao pregão anterior. O Ibovespa é índice de retorno "
+            "total: os proventos já estão no nível calculado pela B3.",
+        )
+        st.caption(f"Data de referência: {fmt_date(ultimo['ref_date'].date())}")
+        st.caption(f"Fonte: {s.source}")
+        sinalizados = int(df["atypical"].sum())
+        if sinalizados:
+            datas = ", ".join(
+                fmt_date(d.date()) for d in df.loc[df["atypical"] == 1, "ref_date"]
+            )
+            st.caption(
+                f"Pregões sinalizados para revisão ({sinalizados}): {datas}. "
+                "Variação acima do limite configurado; os valores não foram alterados."
+            )
+        st.altair_chart(charts.line_chart(df, s.unit, 0), width="stretch")
 
 # --- Metodologia e transparência ---------------------------------------------
 with st.expander("Metodologia, fontes e limitações"):
