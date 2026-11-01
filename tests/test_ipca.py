@@ -76,7 +76,11 @@ def test_cada_janela_reproduz_o_acumulado_publicado(data_fim, publicado):
     fim = date.fromisoformat(data_fim)
     r = metrics.accumulated_12m(mensal_frame(), fim, 40)
     if r["n_obs"] < 12:
-        pytest.skip("janela sem os 12 meses nos dados controlados")
+        pytest.skip(
+            f"janela que termina em {data_fim} exige meses anteriores ao início do conjunto "
+            f"controlado (começa em 01/2025); há {r['n_obs']} dos 12. Esta janela é conferida "
+            "contra a fonte real por scripts/verify_ipca.py"
+        )
     assert round(r["value"], 2) == publicado
 
 

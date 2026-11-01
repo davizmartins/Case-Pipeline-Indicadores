@@ -38,15 +38,21 @@ if not path.exists():
     st.error("A base de dados ainda não existe. Execute `python -m src.pipeline` e recarregue a página.")
     st.stop()
 
+# O fechamento vai em `finally`, não dentro do `try`: se a leitura falhar, o Streamlit
+# reexecuta este script a cada interação do usuário e uma conexão vazaria por reexecução.
+# `src/pipeline.py` já usava try/finally; aqui estava solto.
+conn = None
 try:
     conn = db.connect_readonly(path)
     bruto = {k: db.read_series(conn, k) for k in SERIES}
     runs = {k: db.latest_run(conn, k) for k in SERIES}
     last_ok = {k: db.latest_run(conn, k, status="success") for k in SERIES}
-    conn.close()
 except sqlite3.Error as exc:
     st.error(f"Não foi possível ler a base de dados: {exc}")
     st.stop()
+finally:
+    if conn is not None:
+        conn.close()
 
 # ref_date como texto ISO: é o formato que os cálculos em src/metrics.py esperam.
 data = {

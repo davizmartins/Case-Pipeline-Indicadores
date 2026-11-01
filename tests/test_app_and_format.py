@@ -1,10 +1,11 @@
+import sqlite3
 from datetime import date
 from pathlib import Path
 
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from src import clock, pipeline
+from src import clock, db, pipeline
 from src.config import SERIES
 from src.ptbr import fmt_date, fmt_number, fmt_pct, fmt_timestamp
 from tests.helpers import (
@@ -333,3 +334,43 @@ def test_nota_de_naturezas_diferentes_aparece_na_comparacao(db_dir, monkeypatch)
     notas = " ".join(" ".join(i.value.split()) for i in at.info)
     assert "Naturezas diferentes" in notas
     assert "não a comparação de investimentos equivalentes" in notas
+
+
+def test_conexao_e_fechada_mesmo_quando_a_leitura_da_base_falha(db_dir, monkeypatch):
+    """O fechamento tem de estar em `finally`, não dentro do `try`.
+
+    O Streamlit reexecuta o script a cada interação do usuário. Com o `close()` dentro do
+    `try`, um erro persistente de leitura vazaria uma conexão SQLite por reexecução.
+    """
+    _load(db_dir)
+    estado = {"fechadas": 0, "abertas": 0}
+    abrir_de_verdade = db.connect_readonly
+
+    class ConexaoEspia:
+        def __init__(self, conn):
+            self._conn = conn
+
+        def close(self):
+            estado["fechadas"] += 1
+            self._conn.close()
+
+        def __getattr__(self, nome):
+            return getattr(self._conn, nome)
+
+    def abrir(path):
+        estado["abertas"] += 1
+        return ConexaoEspia(abrir_de_verdade(path))
+
+    def leitura_que_falha(*_a, **_k):
+        raise sqlite3.Error("falha simulada de leitura")
+
+    monkeypatch.setattr(db, "connect_readonly", abrir)
+    monkeypatch.setattr(db, "read_series", leitura_que_falha)
+
+    at = AppTest.from_file(APP, default_timeout=60).run()
+
+    assert any("Não foi possível ler a base" in e.value for e in at.error)
+    assert estado["abertas"] == 1, "o teste só é válido se o espião foi usado"
+    assert estado["fechadas"] == 1, (
+        "a conexão tem de ser fechada também no caminho de erro, senão vaza por reexecução"
+    )
