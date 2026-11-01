@@ -301,6 +301,76 @@ obrigatória, aqui não é. Começando em zero, a variação da PTAX de 4,62 a 6
 quase reta. Os gráficos não levam título: o eixo informa unidade e período, e um título
 interpretativo sugeriria leitura que os dados sozinhos não sustentam.
 
+### Calendários das séries diárias
+
+As séries diárias **não** compartilham calendário. Medido na base, PTAX e Ibovespa
+divergem em **8 datas** na janela de 5 anos, todas com cotação de câmbio e sem pregão:
+
+| Data | Dia |
+|---|---|
+| 24/12/2021, 31/12/2021 | sexta |
+| 30/12/2022, 29/12/2023 | sexta |
+| 24/12/2024, 31/12/2024 | terça |
+| 24/12/2025, 31/12/2025 | quarta |
+
+**Todas em dezembro, em datas de fim de ano.** Isso é compatível com a B3 encerrar o
+calendário de negociação antes do Banco Central, mas **não foi verificado** contra o
+calendário oficial da B3 e portanto **não está registrado como explicado**. Fica como
+padrão observado, a confirmar.
+
+A série 12 também termina um dia antes das outras duas (29/10 contra 30/10 em
+01/11/2026) — ver limitações.
+
+Consequência de projeto: a comparação entre séries diárias **não alinha datas**. Cada
+série é desenhada nas suas próprias, sem preenchimento e sem exclusão de observação; o
+único ponto compartilhado é a data-base do rebase.
+
+## Comparações do dashboard
+
+### Evolução diária em base 100
+
+Compara a série 12 (taxa), o dólar e o Ibovespa (níveis).
+
+- **Data-base:** a primeira data, dentro do período filtrado, com observação nas
+  **três** séries. É exibida na tela. Sem data comum, a comparação não é apresentada.
+- **Séries de nível:** índice = valor(d) ÷ valor(base) × 100.
+- **Série de taxa:** capitaliza as taxas das datas **posteriores** à data-base, no
+  calendário da própria série — mesma convenção do acumulado em 12 meses. A taxa
+  publicada *na* data-base não entra: ali o índice vale 100 por definição.
+- A tela mostra a **última data de cada série**. Quando diferem, um aviso diz que os
+  valores finais **não** são variações de períodos exatamente iguais.
+- Nota permanente: são **naturezas diferentes** — uma taxa de juros acumulada, uma taxa
+  de câmbio e um índice de ações. Não é comparação de investimentos equivalentes, e
+  nenhuma das três considera custos, impostos ou viabilidade de replicação.
+
+### Comparação mensal: série 12 e IPCA
+
+Entram apenas **meses inteiros** contidos no filtro, com o índice mensal publicado e com
+cobertura suficiente na série diária. **O último mês elegível sai dos dados**, não está
+fixado no código: se a fonte publicar mais um mês, a comparação avança sozinha. O período
+efetivamente usado é exibido.
+
+Retorno real **pela razão entre os fatores**:
+
+```
+real = (1 + taxa/100) ÷ (1 + inflação/100) − 1
+```
+
+Subtrair uma taxa da outra dá resultado parecido e errado.
+
+**Limitação:** a checagem de cobertura de cada mês detecta interrupção prolongada, não
+ausência isolada — um dia útil faltando dentro de um mês passaria sem alarme e
+subestimaria o acumulado daquele mês.
+
+### Filtro de período
+
+12 meses, 24 meses, 5 anos e personalizado. Afeta os gráficos de evolução e as duas
+comparações, e define a data-base do rebase.
+
+**Os cartões não mudam com o filtro.** Ficam numa seção própria, "Últimos indicadores
+disponíveis", com semântica fixa — última observação e acumulado nos 12 meses até ela —
+e período e data de referência explícitos em cada um.
+
 ## Fórmulas e convenções
 
 **Acumulado em 12 meses até D**, em %:
@@ -370,7 +440,20 @@ declarada e coberta por teste.
   risco.
 - **Movimento de 05/10/2026 no Ibovespa (+7,70%) não conferido** contra fonte
   independente.
-- **Limite de variação do Ibovespa não derivado dos 5 anos** — ver acima.
+- **Limite de variação do Ibovespa não derivado dos 5 anos.** Na carga de 01/11/2026 ele
+  gerou **um único alerta** em 1.248 pregões (26/10/2026, conferido e correto). Isso
+  mostra que a regra gerou poucos alertas **nesta amostra**; não comprova que detecta
+  todos os problemas possíveis.
+- **A PTAX não tem alerta de variação.** O mesmo evento de 26/10/2026 aparece nela
+  (+9,19%, de 5,0377 para 5,5007) e não é sinalizado, porque nenhuma regra foi
+  configurada para essa série. Melhoria prevista; exigiria um limite próprio, já que
+  câmbio e índice de ações têm volatilidades diferentes. Note também que esses +9,19%
+  **não** são os +8,2% citados na imprensa para o "dólar de fechamento": são
+  referências distintas e não devem ser tratadas como o mesmo número.
+- **As 8 datas divergentes entre PTAX e Ibovespa não foram verificadas** contra o
+  calendário oficial da B3 — ver "Calendários das séries diárias".
+- **A série 12 termina um dia antes** da PTAX e do Ibovespa (29/10 contra 30/10 em
+  01/11/2026). Defasagem de publicação é hipótese, não conclusão.
 - **Convenção de datas do acumulado:** provisória.
 - **A checagem de cobertura não detecta ausência isolada.** Fechar isso exigiria um calendário
   de dias úteis **por série**, com as exceções históricas de cada uma — a série 12 segue o
