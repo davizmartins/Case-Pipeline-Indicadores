@@ -49,9 +49,10 @@ class BusinessDaySession:
     exatamente o que aconteceu com o bloco de um único dia.
     """
 
-    def __init__(self, value_fn=default_value, skip=lambda d: False):
+    def __init__(self, value_fn=default_value, skip=lambda d: False, ultimo: date | None = None):
         self.value_fn = value_fn
         self.skip = skip
+        self.ultimo = ultimo  # simula defasagem de publicação na ponta da série
         self.calls: list[dict] = []
 
     def get(self, url, params, timeout):
@@ -62,6 +63,8 @@ class BusinessDaySession:
             return FakeResponse(400, SGS_ERRO_UM_DIA)
         rows, d = [], start
         while d <= end:
+            if self.ultimo and d > self.ultimo:
+                break
             if d.weekday() < 5 and not self.skip(d):
                 rows.append({"data": d.strftime("%d/%m/%Y"), "valor": str(self.value_fn(d))})
             d += timedelta(days=1)

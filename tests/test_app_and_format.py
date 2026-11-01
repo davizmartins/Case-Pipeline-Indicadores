@@ -42,7 +42,9 @@ def DualSession(cdi_session=None):
     """Dublê que devolve valores diferentes para cada série, como a fonte real."""
     return RouterSession({
         1: BusinessDaySession(),
-        12: cdi_session or BusinessDaySession(value_fn=cdi_value),
+        # A série 12 real para um dia antes das outras (defasagem de publicação
+        # observada em 01/11/2026): o dublê reproduz isso.
+        12: cdi_session or BusinessDaySession(value_fn=cdi_value, ultimo=date(2026, 10, 29)),
         433: MonthlySession(ultimo=(2026, 9)),  # defasagem de divulgação, como na fonte
     })
 
@@ -73,12 +75,14 @@ def test_app_exibe_os_quatro_cartoes(db_dir, monkeypatch):
     assert "Acumulado em 12 meses" in rotulos
     assert "IPCA acumulado em 12 meses" in rotulos
     assert "Fechamento — pontos" in rotulos
-    # Nesta data esperamos exatamente dois avisos, ambos previstos: o falso alerta da
-    # regra provisória do IPCA e o pregão do Ibovespa sinalizado para revisão.
+    # Nesta data esperamos exatamente três avisos, todos previstos: o falso alerta da
+    # regra provisória do IPCA, o pregão do Ibovespa sinalizado para revisão e a
+    # advertência de que as séries diárias terminam em datas diferentes.
     avisos = [w.value for w in at.warning]
-    assert len(avisos) == 2
+    assert len(avisos) == 3
     assert any("possível defasagem" in a for a in avisos)
     assert any("revisão" in a for a in avisos)
+    assert any("datas **diferentes**" in a for a in avisos)
 
 
 def test_cifrao_e_escapado_para_nao_virar_formula_latex(db_dir, monkeypatch):
@@ -107,9 +111,9 @@ def test_pendencia_da_serie_1_fica_na_metodologia_e_nao_em_destaque(db_dir, monk
     _load(db_dir)
     monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
     at = AppTest.from_file(APP, default_timeout=60).run()
-    destaques = " ".join(i.value for i in at.info)
-    assert "PTAX DE FECHAMENTO" not in destaques  # só a série 12 tem aviso em destaque
-    assert len(at.info) == 1
+    pendencias = [i for i in at.info if i.icon == "\u26a0\ufe0f"]
+    assert "PTAX DE FECHAMENTO" not in " ".join(i.value for i in pendencias)
+    assert len(pendencias) == 1  # só a série 12 tem aviso de identificação em destaque
     legendas = " ".join(c.value for c in at.caption)
     assert "PTAX DE FECHAMENTO" in legendas and "PENDENTE" in legendas
     assert "5,4212 na venda" in legendas  # a conferência que foi feita fica registrada
@@ -179,7 +183,7 @@ def test_cartao_do_ipca_mostra_acumulado_e_mes_de_referencia(db_dir, monkeypatch
     legendas = " ".join(c.value for c in at.caption)
     assert "Variação de 09/2026" in legendas
     assert "meses posteriores a 09/2025 até 09/2026" in legendas
-    assert "divulgado depois do fechamento do mês" in legendas
+    assert "divulgado após o fechamento do mês" in legendas
 
 
 def test_ipca_nao_tem_aviso_de_identificacao_em_destaque(db_dir, monkeypatch):
@@ -187,7 +191,8 @@ def test_ipca_nao_tem_aviso_de_identificacao_em_destaque(db_dir, monkeypatch):
     _load(db_dir)
     monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
     at = AppTest.from_file(APP, default_timeout=60).run()
-    assert len(at.info) == 1  # só a série 12 segue pendente
+    pendencias = [i for i in at.info if i.icon == "\u26a0\ufe0f"]
+    assert len(pendencias) == 1  # só a série 12 segue pendente
     legendas = " ".join(c.value for c in at.caption)
     assert "Identificação CONFIRMADA" in legendas and "MG41BP" in legendas
     assert "01/11/2026" in legendas  # data da consulta
@@ -254,5 +259,77 @@ def test_metodologia_declara_o_alcance_da_checagem(db_dir, monkeypatch):
     texto = " ".join(" ".join(m.value.split()) for m in at.markdown)
     assert "ausência isolada" in texto
     assert "interrupção prolongada" in texto
-    assert "nunca descartadas" in texto
+    assert "apenas **sinalizam**" in texto and "não declara erro" in texto
     assert "substituídos por zero" in texto
+
+
+# --- seções, filtro e comparações --------------------------------------------
+
+def test_secao_de_cartoes_declara_que_nao_depende_do_filtro(db_dir, monkeypatch):
+    _load(db_dir)
+    monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    assert "Últimos indicadores disponíveis" in [h.value for h in at.header]
+    legendas = " ".join(" ".join(c.value.split()) for c in at.caption)
+    assert "não** é afetada pelo filtro" in legendas
+
+
+def test_filtro_de_periodo_existe_com_as_quatro_opcoes(db_dir, monkeypatch):
+    _load(db_dir)
+    monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    opcoes = at.sidebar.radio[0].options
+    assert opcoes == ["12 meses", "24 meses", "5 anos", "Personalizado"]
+
+
+def test_mudar_o_filtro_reduz_as_observacoes_dos_graficos(db_dir, monkeypatch):
+    _load(db_dir)
+    monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    cinco_anos = " ".join(c.value for c in at.caption)
+    at.sidebar.radio[0].set_value("12 meses").run()
+    doze_meses = " ".join(c.value for c in at.caption)
+    assert cinco_anos != doze_meses
+    assert "30/10/2025 a 30/10/2026" in " ".join(c.value for c in at.sidebar.caption)
+
+
+def test_comparacao_base_100_mostra_a_data_base_efetiva(db_dir, monkeypatch):
+    _load(db_dir)
+    monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    assert "Comparação no período" in [h.value for h in at.header]
+    legendas = " ".join(" ".join(c.value.split()) for c in at.caption)
+    assert "Data-base efetiva:" in legendas
+    assert "não entra, porque ali o índice vale 100" in legendas
+    assert "Nenhuma série é alinhada, preenchida ou truncada" in legendas
+
+
+def test_comparacao_avisa_quando_as_series_terminam_em_datas_diferentes(db_dir, monkeypatch):
+    """A série 12 vai até 29/10 e as outras até 30/10 — períodos não são iguais."""
+    _load(db_dir)
+    monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    avisos = " ".join(w.value for w in at.warning)
+    assert "terminam em datas **diferentes**" in avisos
+    assert "não devem ser comparados" in avisos
+
+
+def test_comparacao_mensal_informa_o_periodo_efetivo(db_dir, monkeypatch):
+    _load(db_dir)
+    monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    rotulos = [m.label for m in at.metric]
+    assert "Retorno real" in rotulos
+    legendas = " ".join(" ".join(c.value.split()) for c in at.caption)
+    assert "Período efetivamente usado:" in legendas
+    assert "não está fixado no código" in legendas
+    assert "Subtrair uma taxa da outra dá resultado parecido e errado" in legendas
+
+
+def test_nota_de_naturezas_diferentes_aparece_na_comparacao(db_dir, monkeypatch):
+    _load(db_dir)
+    monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    notas = " ".join(" ".join(i.value.split()) for i in at.info)
+    assert "Naturezas diferentes" in notas
+    assert "não a comparação de investimentos equivalentes" in notas
