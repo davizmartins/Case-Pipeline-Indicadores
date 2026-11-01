@@ -71,7 +71,7 @@ fontes (SGS/BCB)  ->  src/extract.py  ->  src/transform.py  ->  src/load.py  -> 
 | Dólar americano (venda) | Banco Central — SGS | 1 | R$/US$ | diária (dias úteis) | — | implementado, **identificação como PTAX de fechamento pendente** |
 | Série SGS 12 | Banco Central — SGS | 12 | % ao dia | diária (dias úteis) | 12 meses | implementado, **identificação pendente** |
 | IPCA — variação mensal | Banco Central — SGS (apuração: IBGE) | 433 | % ao mês | mensal | 12 meses | implementado, **identificação confirmada** |
-| Ibovespa | yfinance `^BVSP` | — | pontos | diária (pregões) | — | pendente |
+| Ibovespa | yfinance `^BVSP` (apuração: B3) | — | pontos | diária (pregões) | — | implementado |
 
 ### Série 1 — o que foi e o que não foi confirmado
 
@@ -129,6 +129,51 @@ Conferências numéricas feitas na coleta, contra o fascículo do IBGE de dezemb
 | 13522 em 01/12/2025 | 4,26 — igual ao fechamento de 2025 publicado pelo IBGE |
 | Carimbo de data | **mês de referência**, não de publicação: sob a outra hipótese, o 4,26 teria de aparecer em 01/01/2026, onde há 4,44 |
 
+### Ibovespa — fonte de terceiros, com armadilhas próprias
+
+O yfinance lê dados do Yahoo Finance. **Não é fonte oficial e não tem contrato de
+estabilidade**; o índice é apurado pela B3. Verificações feitas na biblioteca instalada
+(yfinance 1.7.0) em 01/11/2026, todas com valor explícito na chamada para não depender
+de padrão:
+
+| Armadilha | Consequência |
+|---|---|
+| `yf.config.debug.hide_exceptions` vem **True** | a biblioteca **engole exceções**; uma falha viraria resultado vazio. Ligamos a exceção |
+| `yf.download` não tem como levantar exceção e devolve `Optional[DataFrame]` | usamos `Ticker.history`, que tem |
+| `raise_errors=True` está **obsoleto** nesta versão | usamos `yf.config.debug.hide_exceptions = False` |
+| `end` é **exclusivo** | pedir até 31/10 devolve até 30/10; a janela do projeto é inclusiva, então somamos um dia |
+| `auto_adjust` vem **True**, e aí `Adj Close` nem existe | passamos `False`, para comparar as duas colunas a cada carga |
+| índice vem **com fuso** (`datetime64[s, America/Sao_Paulo]`) | conversão explícita antes de extrair a data |
+| `multi_level_index`, `progress`, `threads` | irrelevantes em `Ticker.history`, que não os tem |
+
+**`Close` e `Adj Close` coincidem**, como esperado para um índice sem desdobramentos nem
+dividendos a ajustar — o Ibovespa já é índice de retorno total, com os proventos dentro
+do nível calculado pela B3. Diferença máxima medida: **0,0**. A conferência é refeita a
+cada carga e registra aviso se divergir.
+
+**Ressalva sobre o "bruto":** o SGS entrega texto, guardado exatamente como veio. O
+yfinance entrega float já convertido pela biblioteca, então o que a tabela bruta guarda é
+a representação desse float — um passo distante do que o servidor enviou.
+
+#### Movimentos atípicos de outubro de 2026
+
+A série apresenta dois movimentos muito acima do normal: **+7,70% em 05/10/2026** e
+**−13,88% em 26/10/2026**. Nos outros 19 pregões do mês a variação ficou entre −2,68% e
++2,63%.
+
+**O de 26/10 foi conferido contra fonte independente e está correto:** o fechamento de
+176.608 pontos e a queda de 13,88% conferem com o publicado pela imprensa financeira, que
+também registra acionamento de circuit breaker pela B3. O dado é real e **não deve ser
+corrigido nem removido**.
+
+O de 05/10 **não foi conferido individualmente** e permanece como movimento atípico
+observado na fonte.
+
+Correção de um raciocínio que usamos no caminho: a coerência entre a abertura de um dia e
+o fechamento do anterior **não comprova** que o movimento ocorreu no mercado — mostra
+apenas consistência interna dos dados recebidos, que poderiam estar errados de forma
+coerente. Foi a conferência externa que resolveu, não a coerência interna.
+
 ### Restrições da API SGS (verificadas em 01/11/2026)
 
 | Pedido | Resposta | Significado |
@@ -159,7 +204,28 @@ bloco anterior; uma janela inteira de um dia é rejeitada com erro explícito.
 |---|---|---|
 | **Inválido** | rejeita e conta | data malformada, valor não numérico, valor não finito (NaN, ±inf) |
 | **Impossível pela definição** | rejeita e conta | só onde a definição impede: PTAX ≤ 0 |
-| **Atípico** | **carrega**, conta e sinaliza | fora da faixa de alerta configurada |
+| **Atípico** | **carrega**, conta e sinaliza | fora da faixa de alerta, por nível **ou** por variação |
+
+Há **duas regras de alerta independentes**, ambas apenas sinalizando:
+
+- **por nível:** o valor é implausível em si (ex.: uma variação mensal do IPCA na casa de 4%, que seria o acumulado em 12 meses);
+- **por variação:** o valor é plausível sozinho mas destoa do anterior (ex.: a queda de 13,88% do Ibovespa, em que 176.608 pontos não têm nada de absurdo isoladamente).
+
+A marca gravada é a união das duas; o relatório da execução conta cada uma. **Sinalizar
+pede conferência humana e não declara erro** — o próprio caso do Ibovespa mostra por quê:
+o pregão sinalizado estava correto.
+
+**Limite de variação do Ibovespa: 10%**, provisório e configurável. A âncora é o circuit
+breaker da B3, que suspende as negociações quando o índice cai 10% ante o fechamento
+anterior — o patamar que o próprio mercado trata como excepcional. Limitações conhecidas:
+
+- é aplicado **simetricamente** a altas, o que a regra do circuit breaker não faz;
+- **não** foi derivado da distribuição dos 5 anos, e **não** foi calibrado para os dois
+  eventos de outubro: ele sinaliza o de 26/10 (−13,88%) e **não** sinaliza o de 05/10
+  (+7,70%);
+- a referência de 10% vem de fonte secundária, não da norma da B3.
+
+Derivar o limite da distribuição real dos 5 anos é melhoria prevista.
 
 - Valor ausente **nunca** vira zero.
 - Taxa **zero** é válida na série 12. Taxa **negativa** é carregada e sinalizada, nunca
@@ -298,6 +364,13 @@ declarada e coberta por teste.
 - **Séries 4389 e 13522: identificação não confirmada**, pela mesma razão. Ambas são usadas
   apenas em scripts de conferência, fora da entrega.
 - **Calendário oficial de divulgação do IBGE não consultado** — ver "Atualidade dos dados".
+- **Ibovespa vem de fonte de terceiros** (yfinance/Yahoo), sem contrato de estabilidade,
+  e os padrões dessa biblioteca já mudaram entre versões. Todos os parâmetros relevantes
+  são passados explicitamente, mas uma mudança de comportamento da fonte continua sendo
+  risco.
+- **Movimento de 05/10/2026 no Ibovespa (+7,70%) não conferido** contra fonte
+  independente.
+- **Limite de variação do Ibovespa não derivado dos 5 anos** — ver acima.
 - **Convenção de datas do acumulado:** provisória.
 - **A checagem de cobertura não detecta ausência isolada.** Fechar isso exigiria um calendário
   de dias úteis **por série**, com as exceções históricas de cada uma — a série 12 segue o

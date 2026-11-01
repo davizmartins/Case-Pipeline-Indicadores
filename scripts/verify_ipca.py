@@ -161,6 +161,15 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  janelas acima da tolerância: {res['n_acima_da_tolerancia']}")
     print(f"  janelas em que o calculado ARREDONDA para o publicado: "
           f"{res['n_arredonda_igual']} de {res['n_janelas']}")
+    nao_arredondam = res["detail"][~res["detail"]["arredonda_igual"]]
+    if not nao_arredondam.empty:
+        print("\n  Janelas dentro da tolerância mas que NÃO arredondam para o publicado.")
+        print("  Esperado quando o desvio cruza a fronteira de arredondamento: os mensais")
+        print("  chegam com 2 casas, então a composição carrega erro acumulado.")
+        for _, r in nao_arredondam.iterrows():
+            print(f"    {r['ref_date']}: calculado={r['calculado']:.6f} "
+                  f"publicado={r['publicado']:.2f} desvio={r['desvio']:.6f} "
+                  f"(tolerância {r['tolerancia']:.4f})")
     if res["n_acima_da_tolerancia"]:
         print("\nJanelas acima da tolerância (investigar; a faixa não indica a causa):")
         for _, r in res["detail"][res["detail"]["desvio"] > res["detail"]["tolerancia"]].head(20).iterrows():
