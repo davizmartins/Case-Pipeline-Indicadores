@@ -22,6 +22,15 @@ def default_value(d: date) -> float:
     return round(5.0 + (d.toordinal() % 100) / 1000, 4)
 
 
+def cdi_value(_d: date) -> float:
+    """Taxa diária constante, no formato de 6 casas em que a série 12 é publicada."""
+    return 0.050788
+
+
+def fixed(value: float):
+    return lambda _d: value
+
+
 # Respostas de erro reais do SGS, coletadas do serviço em 01/11/2026.
 SGS_ERRO_UM_DIA = {"erro": "DataFinal deve ser maior que dataInicial."}
 SGS_ERRO_SEM_DADOS = {
