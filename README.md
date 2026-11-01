@@ -27,6 +27,7 @@ Conferências independentes, fora do pipeline:
 
 ```powershell
 python -m scripts.verify_cdi        # anualização da série 12 vs. série 4389 do SGS
+python -m scripts.verify_ipca       # composição de 12 meses da 433 vs. série 13522
 python -m scripts.verify_ptax       # PTAX vs. API Olinda (ver "Verificações")
 ```
 
@@ -69,7 +70,7 @@ fontes (SGS/BCB)  ->  src/extract.py  ->  src/transform.py  ->  src/load.py  -> 
 |---|---|---|---|---|---|---|
 | Dólar americano (venda) | Banco Central — SGS | 1 | R$/US$ | diária (dias úteis) | — | implementado, **identificação como PTAX de fechamento pendente** |
 | Série SGS 12 | Banco Central — SGS | 12 | % ao dia | diária (dias úteis) | 12 meses | implementado, **identificação pendente** |
-| IPCA | SGS/BCB | a definir | % ao mês | mensal | 12 meses | pendente |
+| IPCA — variação mensal | Banco Central — SGS (apuração: IBGE) | 433 | % ao mês | mensal | 12 meses | implementado, **identificação confirmada** |
 | Ibovespa | yfinance `^BVSP` | — | pontos | diária (pregões) | — | pendente |
 
 ### Série 1 — o que foi e o que não foi confirmado
@@ -106,6 +107,27 @@ de 0,05% a.d.) são compatíveis com uma taxa diária convertível em base 252; 
 passou de 0,051660 para 0,050788, o que equivale a uma queda de **aproximadamente 0,25 p.p.** em
 termos anuais. O movimento é compatível com uma mudança de taxa básica, mas por si só não
 comprova que houve decisão de política monetária nem sua causa.
+
+### Série 433 — identificação CONFIRMADA
+
+A página de metadados de séries temporais do Banco Central lista explicitamente
+**"0433 — IPCA (índice nacional de preços ao consumidor-amplo)"**, com fonte **IBGE**:
+
+- <https://www4.bcb.gov.br/PEC/SERIES/PORT/METADADOS/MG41BP.HTM>
+- **Consultada em 01/11/2026.** A própria página informa última atualização em **27/09/2002**.
+
+Ressalva: nessa página a unidade e a periodicidade aparecem **uma única vez para o grupo
+de 33 séries do IPCA**, não por série. Unidade percentual e periodicidade mensal do índice
+vêm confirmadas separadamente pelo IBGE, que é quem o apura: o fascículo IPCA/INPC traz
+"Mensal" na ficha técnica e divulga a variação em percentual.
+
+Conferências numéricas feitas na coleta, contra o fascículo do IBGE de dezembro de 2025:
+
+| Verificação | Resultado |
+|---|---|
+| 433 em 01/12/2025 | 0,33 — igual ao IPCA de dezembro publicado pelo IBGE |
+| 13522 em 01/12/2025 | 4,26 — igual ao fechamento de 2025 publicado pelo IBGE |
+| Carimbo de data | **mês de referência**, não de publicação: sob a outra hipótese, o 4,26 teria de aparecer em 01/01/2026, onde há 4,44 |
 
 ### Restrições da API SGS (verificadas em 01/11/2026)
 
@@ -175,6 +197,32 @@ A completude da PTAX (49 dias úteis sem cotação, todos feriados nacionais) fo
 **inspeção humana sobre um retrato**, uma vez. Não é garantia automática e não se repete sozinha
 nas próximas execuções.
 
+O limite é **por série**, derivado do calendário de cada uma:
+
+| Série | Limite | Por quê |
+|---|---|---|
+| diárias | 10 dias | fim de semana dá 3; o maior feriado emendado observado em 5 anos deu 5 |
+| mensal | 40 dias | observações consecutivas distam 28 a 31 dias; **um mês faltando produz 59 a 62** |
+
+No caso mensal o limite é bem apertado: ele **detecta um mês faltante**, ao contrário do caso
+diário, onde uma ausência isolada passa.
+
+### Atualidade dos dados
+
+Regra por série. Diárias contam em dias; a mensal conta em **meses de calendário**, porque
+sete dias não significa nada para um índice que sai depois do fechamento do mês.
+
+**O IPCA é divulgado após o mês de referência**, então o cartão sempre mostra um mês anterior
+ao corrente — isso não é atraso.
+
+**Aproximação declarada.** O ideal seria comparar o último mês disponível com o último mês cuja
+divulgação já ocorreu segundo o calendário oficial do IBGE. Consultá-lo automaticamente
+ampliaria o escopo desta etapa, então o projeto usa a diferença em meses, com alerta a partir
+de 2. **Isso produz um falso alerta previsível todo começo de mês:** o mês M é divulgado
+durante M+1, por volta do dia 10; antes disso o último disponível é M−1, diferença de 2. Por
+isso o alerta se chama "possível defasagem" e o próprio texto avisa que pode aparecer sem haver
+atraso real.
+
 Quando houver ausência conhecida e ainda não explicada dentro da janela, ela é registrada em
 `Series.unexplained_absences` e a métrica **não** é apresentada como completa.
 
@@ -231,13 +279,25 @@ declarada e coberta por teste.
   diária propagado pela anualização, com a sensibilidade no nível de taxa de cada data. As casas
   decimais são contadas no **texto recebido**, o que descreve o **formato de publicação**, não a
   precisão metodológica da fonte.
+- **`scripts/verify_ipca.py`:** compõe os 12 mensais da série 433 e compara com o acumulado
+  publicado na série 13522, em todas as janelas comparáveis. Com os dados de novembro de 2026,
+  as **10 janelas disponíveis bateram**: o desvio máximo foi de 0,0049 p.p., e os dez valores
+  calculados **arredondam para exatamente o publicado**. A tolerância soma o arredondamento dos
+  doze mensais (±0,005 p.p. cada, propagados) com o da própria série publicada, chegando a
+  ±0,067 p.p. no pior caso. Isso valida a composição e a convenção da janela mensal; **não**
+  identifica a série 13522, cujos metadados não foram localizados, e **não** vale para a
+  convenção de séries diárias.
 - **`scripts/verify_ptax.py`:** a parte de rede **ainda não foi executada e o endereço da Olinda
   não foi conferido** na documentação oficial.
 
 ## Limitações conhecidas
 
-- **Série 12: identificação não confirmada** por metadados oficiais (ver acima).
-- **Série 4389: identificação não confirmada**, pela mesma razão.
+- **Série 12: identificação não confirmada** por metadados oficiais. A página de metadados de
+  juros do BCB (`mg45p`) documenta apenas séries da Selic. **Não encontrado não é inexistente**:
+  o portal do SGS responde "Requisição inválida" e o caminho certo pode existir.
+- **Séries 4389 e 13522: identificação não confirmada**, pela mesma razão. Ambas são usadas
+  apenas em scripts de conferência, fora da entrega.
+- **Calendário oficial de divulgação do IBGE não consultado** — ver "Atualidade dos dados".
 - **Convenção de datas do acumulado:** provisória.
 - **A checagem de cobertura não detecta ausência isolada.** Fechar isso exigiria um calendário
   de dias úteis **por série**, com as exceções históricas de cada uma — a série 12 segue o
