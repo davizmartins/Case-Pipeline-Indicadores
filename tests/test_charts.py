@@ -69,3 +69,73 @@ def test_data_no_tooltip_sai_no_formato_brasileiro():
     spec = charts.line_chart(_frame(), "R$/US$", 4).to_dict()
     formatos = [t.get("format") for t in spec["encoding"]["tooltip"]]
     assert "%d/%m/%Y" in formatos
+
+
+# --- eixo temporal e cores ---------------------------------------------------
+
+def _frame_longo():
+    dias = pd.bdate_range("2021-11-01", "2026-10-30")
+    return pd.DataFrame({"ref_date": dias, "value": [100.0 + i * 0.01 for i in range(len(dias))]})
+
+
+def _frame_curto():
+    dias = pd.to_datetime(["2026-10-26", "2026-10-27", "2026-10-28"])
+    return pd.DataFrame({"ref_date": dias, "value": [100.0, 99.0, 98.0]})
+
+
+@pytest.mark.parametrize("frame", [_frame_curto(), _frame_longo()])
+def test_eixo_usa_granularidade_de_dia_e_nunca_horas(frame):
+    """Sem timeUnit, um período curto era rotulado em horas sobre dados diários."""
+    spec = charts.line_chart(frame, "pontos", 0).to_dict()
+    x = spec["encoding"]["x"]
+    assert x.get("timeUnit") == "yearmonthdate"
+    assert x["axis"]["format"] == "%d/%m/%Y"
+
+
+def test_cor_da_serie_e_aplicada_na_linha_unica():
+    spec = charts.line_chart(_frame_curto(), "pontos", 0, color="#199e70").to_dict()
+    assert spec["mark"]["color"] == "#199e70"
+
+
+def test_sem_cor_a_linha_nao_fixa_nenhuma():
+    assert "color" not in charts.line_chart(_frame_curto(), "pontos", 0).to_dict()["mark"]
+
+
+def _longo_multi():
+    return pd.DataFrame(
+        {
+            "ref_date": pd.to_datetime(["2026-10-26", "2026-10-27"] * 2),
+            "index": [100.0, 101.0, 100.0, 99.0],
+            "serie": ["A", "A", "B", "B"],
+        }
+    )
+
+
+def test_cores_das_multiplas_series_seguem_o_mapa_e_nao_a_ordem():
+    cores = {"A": "#3987e5", "B": "#d95926"}
+    escala = charts.multi_line_chart(_longo_multi(), "Base 100", 1, cores).to_dict()["encoding"]["color"]["scale"]
+    assert escala["domain"] == ["A", "B"]
+    assert escala["range"] == ["#3987e5", "#d95926"]
+    # inverter a ordem do mapa inverte as cores: a cor acompanha a entidade
+    invertido = charts.multi_line_chart(_longo_multi(), "Base 100", 1, {"B": "#d95926", "A": "#3987e5"})
+    esc2 = invertido.to_dict()["encoding"]["color"]["scale"]
+    assert dict(zip(esc2["domain"], esc2["range"])) == {"A": "#3987e5", "B": "#d95926"}
+
+
+def test_grafico_de_multiplas_series_tambem_usa_eixo_de_dia():
+    spec = charts.multi_line_chart(_longo_multi(), "Base 100", 1, {"A": "#1", "B": "#2"}).to_dict()
+    assert spec["encoding"]["x"].get("timeUnit") == "yearmonthdate"
+
+
+def test_barras_recebem_o_mapa_de_cores():
+    frame = pd.DataFrame({"mes": ["11/2025", "11/2025"], "valor": [1.0, 0.3], "serie": ["A", "B"]})
+    escala = charts.bar_chart(frame, "% no mês", 2, {"A": "#3987e5", "B": "#c98500"}).to_dict()["encoding"]["color"]["scale"]
+    assert escala["range"] == ["#3987e5", "#c98500"]
+
+
+def test_cada_indicador_tem_cor_propria_e_distinta():
+    from src.config import SERIES
+
+    cores = [s.color for s in SERIES.values()]
+    assert len(set(cores)) == len(cores), "dois indicadores com a mesma cor"
+    assert all(c.startswith("#") and len(c) == 7 for c in cores)
