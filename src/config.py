@@ -70,9 +70,12 @@ class Series:
     margin_months: int
 
     # --- pendências --------------------------------------------------------
-    # Quando preenchido, a identificação da série NÃO está confirmada por
-    # metadados oficiais e o texto é exibido na interface.
+    # Texto exibido na seção de metodologia sempre que preenchido.
     identification_note: str | None = None
+    # Quando True, a pendência também aparece como aviso em destaque no cartão.
+    # Reservado para os casos em que a própria identificação da série está em
+    # aberto — não para ressalvas metodológicas sobre uma série já identificada.
+    identification_alert: bool = False
     # Datas ausentes conhecidas e AINDA NÃO EXPLICADAS dentro da janela.
     # Lista mantida MANUALMENTE: não há calendário de dias úteis no projeto,
     # então o preenchimento depende de inspeção humana.
@@ -82,8 +85,8 @@ class Series:
 SERIES: dict[str, Series] = {
     "ptax": Series(
         key="ptax",
-        name="Dólar PTAX (venda)",
-        source="SGS/BCB série 1",
+        name="Dólar americano (venda)",
+        source="Banco Central — SGS 1",
         sgs_code=1,
         unit="R$/US$",
         frequency="diária (dias úteis)",
@@ -92,11 +95,21 @@ SERIES: dict[str, Series] = {
         alert_min=None,
         alert_max=None,
         margin_months=0,
+        identification_note=(
+            "Os valores coletados coincidem com a consulta histórica de cotações do "
+            "Banco Central: em 30/10/2026 ela mostra 5,4206 na compra e 5,4212 na venda, "
+            "o mesmo valor desta série. Isso confere UM valor em UMA data, por dois "
+            "caminhos do BCB. A identificação desta série como a PTAX DE FECHAMENTO "
+            "segue PENDENTE: o catálogo do BCB a nomeia 'Dólar americano (venda)' e cita "
+            "a PTAX apenas em nota histórica. A confirmação continua necessária, porque o "
+            "indicador pedido no case é o dólar PTAX venda."
+        ),
+        identification_alert=False,
     ),
     "cdi": Series(
         key="cdi",
         name="Série SGS 12 — identificação como CDI pendente",
-        source="SGS/BCB série 12",
+        source="Banco Central — SGS 12",
         sgs_code=12,
         unit="% ao dia",
         frequency="diária (dias úteis)",
@@ -111,5 +124,6 @@ SERIES: dict[str, Series] = {
             "do BCB não traz entrada localizável para o CDI. O nome, a unidade e a "
             "periodicidade seguem NÃO CONFIRMADOS por fonte oficial."
         ),
+        identification_alert=True,
     ),
 }

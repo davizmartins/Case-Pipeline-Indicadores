@@ -67,6 +67,41 @@ def test_app_exibe_os_dois_cartoes_sem_avisos_quando_atual(db_dir, monkeypatch):
     assert any("12 meses" in r for r in rotulos)
 
 
+def test_cifrao_e_escapado_para_nao_virar_formula_latex(db_dir, monkeypatch):
+    """Sem escapar, 'R$/US$' era renderizado como matemática pelo Streamlit."""
+    _load(db_dir)
+    monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    rotulo = next(m.label for m in at.metric if "Cotação" in m.label)
+    assert r"R\$/US\$" in rotulo
+    metodologia = " ".join(m.value for m in at.markdown)
+    assert "R$/US$" not in metodologia  # todo cifrão exibido precisa estar escapado
+
+
+def test_titulo_da_serie_1_usa_o_nome_do_catalogo_e_a_fonte_aparece(db_dir, monkeypatch):
+    _load(db_dir)
+    monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    titulos = [s.value for s in at.subheader]
+    assert "Dólar americano (venda)" in titulos
+    assert not any("PTAX" in t for t in titulos)
+    legendas = " ".join(c.value for c in at.caption)
+    assert "Fonte: Banco Central — SGS 1" in legendas
+
+
+def test_pendencia_da_serie_1_fica_na_metodologia_e_nao_em_destaque(db_dir, monkeypatch):
+    _load(db_dir)
+    monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))
+    at = AppTest.from_file(APP, default_timeout=60).run()
+    destaques = " ".join(i.value for i in at.info)
+    assert "PTAX DE FECHAMENTO" not in destaques  # só a série 12 tem aviso em destaque
+    assert len(at.info) == 1
+    legendas = " ".join(c.value for c in at.caption)
+    assert "PTAX DE FECHAMENTO" in legendas and "PENDENTE" in legendas
+    assert "5,4212 na venda" in legendas  # a conferência que foi feita fica registrada
+    assert "indicador pedido no case" in legendas
+
+
 def test_rotulo_da_serie_12_declara_a_pendencia_de_identificacao(db_dir, monkeypatch):
     _load(db_dir)
     monkeypatch.setattr(clock, "today_br", lambda: date(2026, 11, 1))

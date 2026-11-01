@@ -10,13 +10,22 @@ import sqlite3
 
 import streamlit as st
 
-from src import clock, db, metrics
+from src import charts, clock, db, metrics
 from src.config import MAX_GAP_DAYS, SERIES, STALE_AFTER_DAYS, get_db_path
 from src.ptbr import fmt_date, fmt_number, fmt_pct, fmt_timestamp
 
+
+def md(texto: str) -> str:
+    """Escapa cifrões: no markdown do Streamlit, '$...$' é interpretado como LaTeX.
+
+    Sem isso, a unidade "R$/US$" sai renderizada como fórmula matemática.
+    """
+    return texto.replace("$", r"\$")
+
+
 st.set_page_config(page_title="Indicadores de Mercado", page_icon="📈", layout="wide")
 st.title("Indicadores de Mercado")
-st.caption("Versão em construção: dólar PTAX e a série SGS 12. IPCA e Ibovespa ainda não entraram.")
+st.caption("Versão em construção: dólar e a série SGS 12. IPCA e Ibovespa ainda não entraram.")
 
 path = get_db_path()
 if not path.exists():
@@ -60,11 +69,13 @@ for key, series in SERIES.items():
 
 col_ptax, col_cdi = st.columns(2)
 
-# --- Cartão: PTAX ------------------------------------------------------------
+# --- Cartão: dólar americano (venda) ----------------------------------------
 with col_ptax:
     s = SERIES["ptax"]
     df = data["ptax"]
     st.subheader(s.name)
+    if s.identification_note and s.identification_alert:
+        st.info(s.identification_note, icon="⚠️")
     if df.empty:
         st.error("Sem observações. Execute `python -m src.pipeline`.")
     else:
@@ -73,23 +84,22 @@ with col_ptax:
         if len(df) > 1:
             delta = fmt_pct((ultimo["value"] / df.iloc[-2]["value"] - 1) * 100)
         st.metric(
-            label=f"Cotação de venda — {s.unit}",
+            label=md(f"Cotação de venda — {s.unit}"),
             value=f"R$ {fmt_number(ultimo['value'], 4)}",
             delta=delta,
             help="Variação em relação à observação anterior. É uma taxa de câmbio de "
             "referência, não o retorno de um investimento em dólar.",
         )
-        st.caption(
-            f"Data de referência: {fmt_date(ultimo['ref_date'].date())} · Fonte: {s.source}"
-        )
-        st.line_chart(df.set_index("ref_date")["value"], y_label="R$/US$", x_label="Data")
+        st.caption(f"Data de referência: {fmt_date(ultimo['ref_date'].date())}")
+        st.caption(f"Fonte: {s.source}")
+        st.altair_chart(charts.line_chart(df, s.unit, 2), use_container_width=True)
 
 # --- Cartão: série SGS 12 ----------------------------------------------------
 with col_cdi:
     s = SERIES["cdi"]
     df = data["cdi"]
     st.subheader(s.name)
-    if s.identification_note:
+    if s.identification_note and s.identification_alert:
         st.info(s.identification_note, icon="⚠️")
     if df.empty:
         st.error("Sem observações. Execute `python -m src.pipeline`.")
@@ -109,7 +119,6 @@ with col_cdi:
                 f"suficientemente coberta: {acum['coverage']['reason']}."
             )
         else:
-            inicio = acum["start_exclusive"]
             st.metric(
                 label="Acumulado em 12 meses",
                 value=f"{fmt_number(acum['value'], 2)}%",
@@ -117,7 +126,7 @@ with col_cdi:
                 "cobertura detecta interrupção prolongada da fonte, não ausência isolada.",
             )
             st.caption(
-                f"Período: observações posteriores a {fmt_date(inicio)} até "
+                f"Período: observações posteriores a {fmt_date(acum['start_exclusive'])} até "
                 f"{fmt_date(acum['end'])} · {acum['n_obs']} observações"
             )
         anual = metrics.annualize(ultimo["value"])
@@ -127,12 +136,16 @@ with col_cdi:
             "É conversão de unidade da taxa desse dia, não previsão de rendimento."
         )
         st.caption(f"Fonte: {s.source}")
-        st.line_chart(df.set_index("ref_date")["value"], y_label="% ao dia", x_label="Data")
+        st.altair_chart(charts.line_chart(df, s.unit, 3), use_container_width=True)
 
 # --- Metodologia e transparência ---------------------------------------------
 with st.expander("Metodologia, fontes e limitações"):
     st.markdown(
         """
+**Escala dos gráficos.** O eixo vertical é ajustado à faixa dos dados do período, com
+uma pequena margem, e não começa em zero. São gráficos de linha para acompanhar o
+movimento de uma cotação ou de uma taxa, não para comparar magnitudes entre categorias.
+
 **Alcance da checagem de cobertura.** O pipeline detecta **interrupção prolongada**
 da fonte (mais de 10 dias corridos sem observação). Ele **não** detecta ausência
 isolada: um dia útil faltando no meio da semana produz lacuna de 2 dias e passa sem
@@ -154,7 +167,9 @@ seu próprio calendário e seu próprio prazo de publicação.
     )
     for key, series in SERIES.items():
         df = data[key]
-        st.markdown(f"**{series.name}** — {series.source} · {series.unit} · {series.frequency}")
+        st.markdown(
+            md(f"**{series.name}** — {series.source} · {series.unit} · {series.frequency}")
+        )
         if series.identification_note:
             st.caption(f"Pendência: {series.identification_note}")
         if not df.empty:
