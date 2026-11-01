@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import replace
 from datetime import date
 
 import pandas as pd
@@ -55,11 +56,21 @@ def fetch_annual(start: date, end: date, session=None, sleep=None) -> pd.DataFra
     kwargs = {"session": session}
     if sleep is not None:
         kwargs["sleep"] = sleep
-    stub = SERIES["cdi"].__class__(
-        key="sgs4389", name="Série SGS 4389", source=f"SGS/BCB série {ANNUAL_SERIES_CODE}",
-        sgs_code=ANNUAL_SERIES_CODE, unit="(não confirmado)", frequency="diária",
-        kind="taxa", reject_non_positive=False, alert_min=None, alert_max=None,
+    # Derivado da série real com `replace`, e não construído campo a campo: `extract_series`
+    # usa apenas `sgs_code`, e montar o dataclass inteiro à mão fazia o script quebrar a cada
+    # campo novo em Series — foi exatamente o que aconteceu (TypeError por `max_gap_days`).
+    stub = replace(
+        SERIES["cdi"],
+        key="sgs4389",
+        name="Série SGS 4389",
+        source=f"SGS/BCB série {ANNUAL_SERIES_CODE}",
+        sgs_code=ANNUAL_SERIES_CODE,
+        unit="(não confirmado)",
+        alert_min=None,
+        alert_max=None,
         margin_months=0,
+        identification_note=None,
+        identification_alert=False,
     )
     rows = extract.extract_series(stub, start, end, **kwargs)
     if not rows:

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import replace
 from datetime import date
 
 import pandas as pd
@@ -43,11 +44,20 @@ def fetch_accumulated(start: date, end: date, session=None, sleep=None) -> pd.Da
     kwargs = {"session": session}
     if sleep is not None:
         kwargs["sleep"] = sleep
-    stub = SERIES["ipca"].__class__(
-        key="sgs13522", name="Série SGS 13522", source=f"Banco Central — SGS {ACC12_SERIES_CODE}",
-        sgs_code=ACC12_SERIES_CODE, unit="(não confirmado)", frequency="mensal", kind="taxa",
-        reject_non_positive=False, alert_min=None, alert_max=None,
-        max_gap_days=40, margin_months=0,
+    # Ver o comentário equivalente em verify_cdi.py: derivar com `replace` em vez de construir
+    # campo a campo, para o script não quebrar quando Series ganhar um campo obrigatório.
+    stub = replace(
+        SERIES["ipca"],
+        key="sgs13522",
+        name="Série SGS 13522",
+        source=f"Banco Central — SGS {ACC12_SERIES_CODE}",
+        sgs_code=ACC12_SERIES_CODE,
+        unit="(não confirmado)",
+        alert_min=None,
+        alert_max=None,
+        margin_months=0,
+        identification_note=None,
+        identification_alert=False,
     )
     rows = extract.extract_series(stub, start, end, **kwargs)
     if not rows:

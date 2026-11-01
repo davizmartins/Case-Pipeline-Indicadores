@@ -516,11 +516,20 @@ declarada e coberta por teste.
 
 ## Verificações
 
-- **Testes automatizados (`pytest`): 315 passando e 1 pulado**, com dados controlados e **sem
+- **Testes automatizados (`pytest`): 318 passando e 1 pulado**, com dados controlados e **sem
   rede**. O dublê da fonte reproduz as recusas reais do SGS (400 em intervalo de um dia, 404 em
   intervalo vazio) e o comportamento real do yfinance, porque um dublê mais permissivo que o
   serviço faz o teste passar enquanto a produção falha — foi o que aconteceu três vezes neste
   projeto.
+- **Lacuna de cobertura encontrada na validação final, já fechada.** Os scripts de conferência
+  montavam um `Series` campo a campo para apontar ao código de série auxiliar, e só a função
+  **pura** de comparação tinha teste. Quando `Series` ganhou o campo obrigatório `max_gap_days`,
+  `verify_cdi.py` passou a quebrar com `TypeError` **e a suíte continuou verde**, porque nenhum
+  teste exercitava a função que monta o pedido. Os stubs passaram a ser derivados da série real
+  com `dataclasses.replace` — `extract_series` usa apenas `sgs_code`, então construir o
+  dataclass inteiro era fragilidade sem função — e há três testes novos cobrindo a construção
+  do pedido nos dois scripts. Conferido por mutação: voltando à construção manual, os testes
+  falham.
 - **Extração real do SGS:** executada em 01/11/2026 para a série 1 — 1.256 observações de
   01/11/2021 a 30/10/2026, com as 49 ausências em dia útil conferidas uma a uma como feriados
   nacionais.
