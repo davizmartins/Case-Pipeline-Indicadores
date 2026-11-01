@@ -73,12 +73,29 @@ def _describe(resp) -> str:
     return f"HTTP {resp.status_code}" + (f" — {body}" if body else "")
 
 
+def _content_type(resp) -> str:
+    try:
+        return (resp.headers or {}).get("Content-Type", "") or ""
+    except Exception:  # um dublê de teste pode não ter .headers
+        return ""
+
+
 def _parse(resp, code: int, start: date, end: date) -> list[dict]:
     where = f"SGS {code} [{_fmt(start)}..{_fmt(end)}]"
     try:
         payload = resp.json()
     except ValueError as exc:
-        raise ExtractionError(f"{where}: resposta não é JSON válido ({exc})") from exc
+        # O corpo tem de aparecer aqui, como já aparece nos erros HTTP: uma resposta com
+        # status 200 e corpo não-JSON (uma página de erro em HTML, por exemplo) é
+        # indiagnosticável sem ver o que veio. Foi a lição do "HTTP 400" sem corpo,
+        # repetida neste outro ramo do código.
+        tipo = _content_type(resp)
+        detalhe = _describe(resp)
+        if tipo:
+            detalhe += f" — Content-Type: {tipo}"
+        raise ExtractionError(
+            f"{where}: resposta não é JSON válido ({exc}) · {detalhe}"
+        ) from exc
     if not isinstance(payload, list):
         raise ExtractionError(f"{where}: formato inesperado de resposta: {str(payload)[:200]}")
     for item in payload:

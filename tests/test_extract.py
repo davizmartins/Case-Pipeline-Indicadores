@@ -5,6 +5,7 @@ import pytest
 import requests
 
 from src.config import MAX_ATTEMPTS, SERIES
+from src import extract
 from src.extract import ExtractionError, date_chunks, extract_series, fetch_chunk
 from tests.helpers import (
     SGS_ERRO_SEM_DADOS,
@@ -149,3 +150,41 @@ def test_http_5xx_e_retentado_mas_4xx_falha_direto():
 def test_resposta_malformada_vira_erro_explicito(resp):
     with pytest.raises(ExtractionError):
         fetch_chunk(ScriptedSession([resp]), 1, date(2026, 1, 1), date(2026, 1, 31), sleep=no_sleep)
+
+
+def test_resposta_nao_json_mostra_status_corpo_e_content_type():
+    """Status 200 com corpo HTML é indiagnosticável sem ver o que veio.
+
+    Mesma lição do 'HTTP 400' sem corpo, que apareceu de novo neste outro ramo:
+    o SGS respondeu 200 com algo que não era JSON e a mensagem não dizia o quê.
+    """
+    class RespostaHtml:
+        status_code = 200
+        text = "<html><body>Requisição inválida</body></html>"
+        headers = {"Content-Type": "text/html; charset=utf-8"}
+
+        def json(self):
+            raise ValueError("Expecting value: line 1 column 1 (char 0)")
+
+    with pytest.raises(extract.ExtractionError) as exc:
+        extract._parse(RespostaHtml(), 13522, date(2020, 11, 1), date(2021, 10, 31))
+
+    msg = str(exc.value)
+    assert "SGS 13522" in msg
+    assert "HTTP 200" in msg, "o status tem de aparecer: 200 com corpo errado não é erro de rede"
+    assert "Requisição inválida" in msg, "sem o corpo não há diagnóstico"
+    assert "text/html" in msg, "o Content-Type distingue página de erro de JSON malformado"
+
+
+def test_resposta_nao_json_sem_headers_nao_quebra():
+    """Um dublê de teste pode não ter .headers; a mensagem degrada, não explode."""
+    class RespostaCrua:
+        status_code = 200
+        text = "nao-json"
+
+        def json(self):
+            raise ValueError("boom")
+
+    with pytest.raises(extract.ExtractionError) as exc:
+        extract._parse(RespostaCrua(), 1, date(2026, 1, 1), date(2026, 1, 2))
+    assert "nao-json" in str(exc.value)

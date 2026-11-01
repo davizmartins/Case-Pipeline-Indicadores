@@ -516,8 +516,26 @@ declarada e coberta por teste.
 
 ## Verificações
 
-- **Testes automatizados (`pytest`): 318 passando e 1 pulado**, com dados controlados e **sem
-  rede**. O dublê da fonte reproduz as recusas reais do SGS (400 em intervalo de um dia, 404 em
+- **Testes automatizados (`pytest`): 320 passando, 1 pulado, 0 falhando**, com dados controlados
+  e **sem rede**.
+  > **O teste pulado, identificado.** É um caso parametrizado de
+  > `test_cada_janela_reproduz_o_acumulado_publicado` (`tests/test_ipca.py`): a janela que
+  > termina em 01/11/2025 exigiria os doze mensais de dezembro de 2024 a novembro de 2025, e o
+  > conjunto controlado começa em janeiro de 2025. Com 11 dos 12 meses, o teste se pula em vez
+  > de afirmar um acumulado incompleto. As outras 10 janelas passam. **Impacto na entrega:
+  > nenhum** — essa mesma janela é conferida contra a fonte real por `scripts/verify_ipca.py`,
+  > que comparou 60 janelas, incluindo novembro de 2025. Não há falha nem teste desativado.
+  > **Avisos na suíte.** Com `pytest -W error` a suíte emite 6 `ResourceWarning: unclosed
+  > database`: testes que abrem conexão SQLite e deixam o coletor de lixo fechá-la. São de
+  > **teste**, não do pipeline — `src/pipeline.py` fecha em `try/finally`. Não afetam
+  > resultado nem dados.
+- **Aviso emitido pelo pipeline, de biblioteca de terceiros.** Cada execução imprime um
+  `Pandas4Warning` originado em `yfinance/utils.py` (uso de `sort_index(inplace=True)`, que o
+  pandas 4 vai remover). **Não é código deste projeto** e não há como silenciá-lo sem esconder
+  avisos da biblioteca. **Impacto sob os requisitos declarados: nenhum** — `requirements.txt`
+  fixa `pandas>=3.0,<4`, então a versão que removeria o parâmetro não é instalada. Se o
+  yfinance não corrigir isso antes do pandas 4, subir o limite do pandas exigirá subir o
+  yfinance junto. Registrado como dependência a acompanhar, não como erro a tratar. O dublê da fonte reproduz as recusas reais do SGS (400 em intervalo de um dia, 404 em
   intervalo vazio) e o comportamento real do yfinance, porque um dublê mais permissivo que o
   serviço faz o teste passar enquanto a produção falha — foi o que aconteceu três vezes neste
   projeto.
@@ -540,15 +558,36 @@ declarada e coberta por teste.
   arredondamento de publicação das duas séries, e **H2 (estrita, informativa)**, só o da série
   diária propagado pela anualização, com a sensibilidade no nível de taxa de cada data. As casas
   decimais são contadas no **texto recebido**, o que descreve o **formato de publicação**, não a
-  precisão metodológica da fonte.
+  precisão metodológica da fonte. Execução de 01/11/2026, período 03/11/2020 a 29/10/2026:
+  **1.505 datas em comum, nenhuma exclusiva de qualquer das duas séries**, desvio máximo
+  **0,00013968 p.p.**, nenhuma data acima de H1 nem de H2. Resultado: compatível dentro de H1.
 - **`scripts/verify_ipca.py`:** compõe os 12 mensais da série 433 e compara com o acumulado
-  publicado na série 13522, em todas as janelas comparáveis. Com os dados de novembro de 2026,
-  as **10 janelas disponíveis bateram**: o desvio máximo foi de 0,0049 p.p., e os dez valores
-  calculados **arredondam para exatamente o publicado**. A tolerância soma o arredondamento dos
-  doze mensais (±0,005 p.p. cada, propagados) com o da própria série publicada, chegando a
-  ±0,067 p.p. no pior caso. Isso valida a composição e a convenção da janela mensal; **não**
-  identifica a série 13522, cujos metadados não foram localizados, e **não** vale para a
-  convenção de séries diárias.
+  publicado na série 13522, em todas as janelas comparáveis. Execução de 01/11/2026, período
+  01/11/2020 a 01/09/2026: **60 janelas comparadas, nenhuma acima da tolerância**, desvio
+  máximo **0,005158 p.p.** Em **59 das 60** o valor calculado arredonda para exatamente o
+  publicado; em **uma** (dezembro de 2022: calculado 5,784842 contra 5,79 publicado, desvio
+  0,005158 com tolerância 0,0682) o desvio cruza a fronteira de arredondamento e o valor não
+  arredonda para o publicado. **Leitura correta desse caso:** o desvio está dentro da
+  tolerância e sua magnitude é **compatível** com o arredondamento dos valores publicados — os
+  mensais chegam com 2 casas decimais e a composição de doze deles carrega erro acumulado. Isso
+  **não comprova** que o arredondamento seja a causa, nem **exclui** diferença metodológica
+  entre as duas séries: um desvio dessa ordem seria igualmente compatível com outras causas, e
+  a conferência mede compatibilidade numérica, não origem. A tolerância soma o
+  arredondamento dos doze mensais (±0,005 p.p. cada, propagados) com o da própria série
+  publicada, chegando a ±0,0682 p.p. no pior caso. Isso valida a composição e a convenção da
+  janela mensal; **não** identifica a série 13522, cujos metadados não foram localizados, e
+  **não** vale para a convenção de séries diárias.
+  > **Correção de uma afirmação anterior deste README.** Uma execução anterior cobriu apenas 10
+  > janelas, e o texto afirmava que **todos** os valores calculados arredondavam para o
+  > publicado. Com 60 janelas, um deles não arredonda. A afirmação forte vinha de uma amostra
+  > seis vezes menor e não se sustentou quando a amostra cresceu.
+- **Resposta não-JSON observada uma vez, sem causa estabelecida.** Em 01/11/2026 uma execução do
+  `verify_ipca` falhou no primeiro bloco com "resposta não é JSON válido", e a execução seguinte,
+  minutos depois, completou sem erro. **A causa não foi determinada:** a mensagem de erro daquela
+  versão não incluía o corpo da resposta, então a evidência se perdeu. O erro passou a trazer
+  status, `Content-Type` e os primeiros 300 caracteres do corpo, para que uma próxima ocorrência
+  seja diagnosticável. Uma resposta não-JSON **não** é repetida pela rotina de retentativa, ao
+  contrário dos erros HTTP; mudar isso ficou pendente de saber a causa.
 - **`scripts/verify_ptax.py`: não funcional.** A parte de rede **nunca foi executada** e o
   endereço da API Olinda **não foi conferido** na documentação oficial. O arquivo está no
   repositório como esqueleto da conferência pendente, não como ferramenta utilizável.
