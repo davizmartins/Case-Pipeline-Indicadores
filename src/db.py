@@ -2,8 +2,9 @@
 
 Tabelas:
 - raw_observations: dado recebido da fonte, sem tratamento (auditoria).
-  Custo: duplica o armazenamento (poucos milhares de linhas por série diária).
-- observations: dado tratado, o que alimenta o dashboard.
+- observations: dado tratado, o que alimenta o dashboard. A coluna `atypical`
+  marca observações fora da faixa de alerta — elas SÃO carregadas, só ficam
+  sinalizadas.
 - pipeline_runs: uma linha por indicador a cada execução (sucesso ou falha).
 
 Distinção importante: ref_date é a data a que o dado se REFERE; fetched_at é o
@@ -33,6 +34,7 @@ CREATE TABLE IF NOT EXISTS observations (
     indicator   TEXT NOT NULL,
     ref_date    TEXT NOT NULL,
     value       REAL NOT NULL,
+    atypical    INTEGER NOT NULL DEFAULT 0,
     fetched_at  TEXT NOT NULL,
     PRIMARY KEY (indicator, ref_date)
 );
@@ -46,12 +48,28 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
     rows_fetched    INTEGER,
     rows_loaded     INTEGER,
     rows_discarded  INTEGER,
+    rows_atypical   INTEGER,
     window_start    TEXT,
     window_end      TEXT,
     last_ref_date   TEXT,
     message         TEXT
 );
 """
+
+# Colunas acrescentadas depois da primeira versão do esquema. CREATE TABLE IF NOT
+# EXISTS não as adiciona a uma base já existente, então aplicamos na conexão.
+_MIGRATIONS = {
+    "observations": {"atypical": "INTEGER NOT NULL DEFAULT 0"},
+    "pipeline_runs": {"rows_atypical": "INTEGER"},
+}
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    for table, columns in _MIGRATIONS.items():
+        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        for name, ddl in columns.items():
+            if name not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
 
 
 def connect(path: Path | str | None = None) -> sqlite3.Connection:
@@ -60,6 +78,8 @@ def connect(path: Path | str | None = None) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.executescript(SCHEMA)
+    _migrate(conn)
+    conn.commit()
     return conn
 
 
@@ -72,7 +92,7 @@ def connect_readonly(path: Path | str | None = None) -> sqlite3.Connection:
 def read_series(conn: sqlite3.Connection, indicator: str) -> pd.DataFrame:
     """Observações tratadas do indicador, em ordem cronológica (ref_date como datetime)."""
     df = pd.read_sql_query(
-        "SELECT ref_date, value FROM observations WHERE indicator = ? ORDER BY ref_date",
+        "SELECT ref_date, value, atypical FROM observations WHERE indicator = ? ORDER BY ref_date",
         conn,
         params=(indicator,),
     )

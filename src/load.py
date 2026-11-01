@@ -24,10 +24,11 @@ ON CONFLICT (indicator, raw_date) DO UPDATE SET
 """
 
 _OBS_UPSERT = """
-INSERT INTO observations (indicator, ref_date, value, fetched_at)
-VALUES (?, ?, ?, ?)
+INSERT INTO observations (indicator, ref_date, value, atypical, fetched_at)
+VALUES (?, ?, ?, ?, ?)
 ON CONFLICT (indicator, ref_date) DO UPDATE SET
     value = excluded.value,
+    atypical = excluded.atypical,
     fetched_at = excluded.fetched_at
 """
 
@@ -52,7 +53,8 @@ def load_series(
         for r in raw_rows
     ]
     obs_params = [
-        (indicator, d, float(v), fetched_at) for d, v in zip(clean["ref_date"], clean["value"])
+        (indicator, d, float(v), int(a), fetched_at)
+        for d, v, a in zip(clean["ref_date"], clean["value"], clean["atypical"])
     ]
     with conn:  # commit se tudo deu certo, rollback se algo levantar exceção
         conn.executemany(_RAW_UPSERT, raw_params)
@@ -70,6 +72,7 @@ def record_run(
     rows_fetched: int | None,
     rows_loaded: int | None,
     rows_discarded: int | None,
+    rows_atypical: int | None,
     window_start: str,
     window_end: str,
     last_ref_date: str | None,
@@ -81,11 +84,11 @@ def record_run(
             """
             INSERT INTO pipeline_runs (
                 indicator, started_at, finished_at, status, rows_fetched, rows_loaded,
-                rows_discarded, window_start, window_end, last_ref_date, message
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                rows_discarded, rows_atypical, window_start, window_end, last_ref_date, message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 indicator, started_at, finished_at, status, rows_fetched, rows_loaded,
-                rows_discarded, window_start, window_end, last_ref_date, message,
+                rows_discarded, rows_atypical, window_start, window_end, last_ref_date, message,
             ),
         )
