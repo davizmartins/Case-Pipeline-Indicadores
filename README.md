@@ -439,8 +439,9 @@ real = (1 + taxa/100) ÷ (1 + inflação/100) − 1
 ```
 
 Subtrair uma taxa da outra dá resultado parecido e errado. Na janela de 5 anos a diferença
-entre os dois métodos é grande o bastante para mudar a conversa: 80,38% de CDI contra 27,87%
-de IPCA dão **41,07%** de ganho real, não os 52,51 p.p. da subtração.
+entre os dois métodos é grande o bastante para mudar a conversa: na carga de 01/11/2026, com os
+59 meses inteiros de 11/2021 a 09/2026, 80,38% da série 12 contra 27,87% de IPCA dão **41,07%**
+de ganho real — não os 52,51 p.p. da subtração.
 
 **Limitação:** a checagem de cobertura de cada mês detecta interrupção prolongada, não
 ausência isolada — um dia útil faltando dentro de um mês passaria sem alarme e
@@ -516,9 +517,13 @@ declarada e coberta por teste.
 
 ## Verificações
 
-- **Testes automatizados (`pytest`): 320 passando, 1 pulado, 0 falhando**, com dados controlados
-  e **sem rede**.
-  > **O teste pulado, identificado.** É um caso parametrizado de
+- **Testes automatizados (`pytest`): 321 passando, 1 pulado, 0 falhando**, com dados controlados
+  e **sem rede**. O dublê da fonte reproduz as recusas reais do SGS (400 em intervalo de um dia,
+  404 em intervalo vazio) e o comportamento real do yfinance, porque um dublê mais permissivo
+  que o serviço faz o teste passar enquanto a produção falha — foi o que aconteceu três vezes
+  neste projeto.
+  > **O teste pulado, identificado.** A própria saída do `pytest` diz qual é e por quê; o
+  > resumo: é um caso parametrizado de
   > `test_cada_janela_reproduz_o_acumulado_publicado` (`tests/test_ipca.py`): a janela que
   > termina em 01/11/2025 exigiria os doze mensais de dezembro de 2024 a novembro de 2025, e o
   > conjunto controlado começa em janeiro de 2025. Com 11 dos 12 meses, o teste se pula em vez
@@ -527,8 +532,15 @@ declarada e coberta por teste.
   > que comparou 60 janelas, incluindo novembro de 2025. Não há falha nem teste desativado.
   > **Avisos na suíte.** Com `pytest -W error` a suíte emite 6 `ResourceWarning: unclosed
   > database`: testes que abrem conexão SQLite e deixam o coletor de lixo fechá-la. São de
-  > **teste**, não do pipeline — `src/pipeline.py` fecha em `try/finally`. Não afetam
-  > resultado nem dados.
+  > **teste**, não do pipeline, e não afetam resultado nem dados. Esses avisos ficam
+  > invisíveis na execução normal: como só aparecem quando o coletor de lixo roda, são
+  > atribuídos a qualquer teste em execução no momento.
+- **Vazamento de conexão no dashboard, encontrado ao investigar aqueles avisos e corrigido.**
+  O `app.py` fechava a conexão **dentro** do `try`: num erro de leitura, o `close()` nunca
+  executava. O Streamlit reexecuta o script a cada interação do usuário, então um erro
+  persistente vazaria uma conexão por interação. O fechamento foi movido para `finally`, como
+  já estava em `src/pipeline.py`, com um teste que simula falha de leitura e verifica o
+  fechamento. Conferido por mutação: com o `close()` de volta dentro do `try`, o teste falha.
 - **Aviso emitido pelo pipeline, de biblioteca de terceiros.** Cada execução imprime um
   `Pandas4Warning` originado em `yfinance/utils.py` (uso de `sort_index(inplace=True)`, que o
   pandas 4 vai remover). **Não é código deste projeto** e não há como silenciá-lo sem esconder
