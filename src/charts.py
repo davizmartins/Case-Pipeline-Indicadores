@@ -30,6 +30,77 @@ def axis_domain(low: float, high: float, margin: float = MARGIN) -> tuple[float,
     return low - slack, high + slack
 
 
+def multi_line_chart(
+    frame: pd.DataFrame,
+    y_title: str,
+    decimals: int,
+    value_col: str = "index",
+    series_col: str = "serie",
+    margin: float = MARGIN,
+    height: int = 360,
+) -> alt.Chart:
+    """Várias séries no mesmo gráfico, cada uma nas SUAS próprias datas.
+
+    Nada é alinhado, preenchido ou excluído: o formato longo permite que cada série
+    tenha o seu calendário. `frame` traz ref_date, `series_col` e `value_col`.
+    """
+    low, high = axis_domain(
+        float(frame[value_col].min()), float(frame[value_col].max()), margin
+    )
+    return (
+        alt.Chart(frame)
+        .mark_line()
+        .encode(
+            x=alt.X("ref_date:T", title="Data"),
+            y=alt.Y(
+                f"{value_col}:Q",
+                title=y_title,
+                scale=alt.Scale(domain=[low, high], nice=False),
+                axis=alt.Axis(labels=True, format=f".{decimals}f"),
+            ),
+            color=alt.Color(f"{series_col}:N", title="Indicador"),
+            tooltip=[
+                alt.Tooltip("ref_date:T", title="Data", format="%d/%m/%Y"),
+                alt.Tooltip(f"{series_col}:N", title="Indicador"),
+                alt.Tooltip(f"{value_col}:Q", title=y_title, format=f".{decimals}f"),
+            ],
+        )
+        .properties(height=height)
+    )
+
+
+def bar_chart(
+    frame: pd.DataFrame,
+    y_title: str,
+    decimals: int,
+    value_col: str = "valor",
+    series_col: str = "serie",
+    x_col: str = "mes",
+    height: int = 320,
+) -> alt.Chart:
+    """Barras agrupadas por período — usado na comparação mensal.
+
+    Aqui a base zero é obrigatória: barras comparam magnitudes, e cortar o eixo
+    distorceria a leitura. É o oposto da decisão tomada para os gráficos de linha.
+    """
+    return (
+        alt.Chart(frame)
+        .mark_bar()
+        .encode(
+            x=alt.X(f"{x_col}:N", title="Mês"),
+            y=alt.Y(f"{value_col}:Q", title=y_title, axis=alt.Axis(format=f".{decimals}f")),
+            color=alt.Color(f"{series_col}:N", title="Indicador"),
+            xOffset=f"{series_col}:N",
+            tooltip=[
+                alt.Tooltip(f"{x_col}:N", title="Mês"),
+                alt.Tooltip(f"{series_col}:N", title="Indicador"),
+                alt.Tooltip(f"{value_col}:Q", title=y_title, format=f".{decimals}f"),
+            ],
+        )
+        .properties(height=height)
+    )
+
+
 def line_chart(
     frame: pd.DataFrame,
     y_title: str,
