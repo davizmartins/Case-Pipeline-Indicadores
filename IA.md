@@ -1,7 +1,8 @@
 # IA.md — Relatório sobre o uso de inteligência artificial
 
 **Ferramenta:** Claude (Claude Code / modelo `claude-opus-5`), em uma única conversa.
-**Gerado em:** 01/11/2026, ao final do desenvolvimento, com o prompt exigido no case.
+**Gerado em:** 01/11/2026, ao final do desenvolvimento, a partir do prompt do case enviado
+literalmente pelo próprio usuário nesta conversa.
 
 ## Nota de método (leia antes do resto)
 
@@ -59,6 +60,14 @@ melhoria"*) e mandou manter pendências documentadas em vez de resolvê-las ampl
 **Proibiu explicitamente que eu fabricasse o histórico de colaboração:** *"Não invente
 questionamentos, validações ou participação minha"* e *"Não fabrique um histórico de
 desenvolvimento depois de concluir tudo"*. Esta seção existe sob essa restrição.
+
+**Um episódio sobre este próprio relatório, no último minuto do projeto.** Ele chegou a pedir
+que alterássemos o prompt prescrito no case: *"prefiro que a gente altere o prompt de comando
+para realização do IA.md"*. Eu apontei o risco — o case prescreve o prompt e manda salvar a
+resposta "sem editar", e o critério de avaliação diz "IA.md gerado conforme instruído" — e
+separei o que seria ajuste de método do que seria editar o relatório por via indireta. Ele então
+enviou o prompt **literalmente como está no PDF**, sem nenhuma alteração. Registro porque é
+decisão dele e porque é o tipo de coisa que um relatório embelezado omitiria.
 
 **Onde o direcionamento foi mais fraco:** ele delegou a mim quase toda a arquitetura de código
 (divisão de módulos, esquema do banco, estrutura dos testes) sem pedir alternativas. Em geral

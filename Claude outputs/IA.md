@@ -9,9 +9,10 @@ literalmente pelo próprio usuário nesta conversa.
 Este relatório tem uma limitação que o próprio prompt me obriga a declarar: **a conversa foi
 compactada durante o desenvolvimento** e eu não tenho mais o texto literal de toda a primeira
 metade. O que tenho é (a) um resumo automático que preserva as mensagens do usuário quase na
-íntegra e registra os erros e correções ocorridos, e (b) os turnos finais em texto literal.
+íntegra e registra os erros e correções ocorridos, (b) os turnos finais em texto literal, e
+(c) o repositório e seus commits.
 
-Na mensagem anterior a este relatório eu afirmei ao Armindo que tinha "acesso ao arquivo de
+Numa mensagem anterior a este relatório eu afirmei ao Armindo que tinha "acesso ao arquivo de
 transcrição integral desta sessão". **Isso estava errado** — fui conferir o arquivo e ele começa
 no ponto da compactação. Ele foi informado antes de eu escrever. Registro aqui porque é
 exatamente o tipo de afirmação confiante e não verificada que este relatório deve expor, e
@@ -39,7 +40,7 @@ desenho, com estes ajustes: 1… 2… 3… 4… 5…"*.
 **Deu contexto e restrições de ambiente desde o início:** Windows 11, Python 3.13.6, interface
 em português com formatos brasileiros de data e número, e a definição de quem usaria o
 dashboard. Também impôs restrições de processo: os commits e o push são dele, eu só sugiro
-mensagens no padrão `feat:` / `fix:`; nada é publicado sem instrução.
+mensagens no padrão `feat:` / `fix:` / `docs:`; nada é publicado sem instrução.
 
 **O traço mais incomum foi exigir que eu separasse o que foi verificado do que foi suposto.** Em
 vários pontos ele recusou uma conclusão não porque estivesse errada, mas porque a evidência não
@@ -52,22 +53,33 @@ a sustentava ainda. Exemplos textuais dele:
 - *"Não ajuste a fórmula apenas para fazer os números coincidirem."*
 - *"Oito observações de diferença não comprovam, sozinhas, uma diferença de calendário."*
 - *"Um único alerta do Ibovespa também não comprova que o limite detecta todos os problemas; apenas mostra que gerou poucos alertas nessa amostra."*
+- *"o desvio está dentro da tolerância e é compatível com arredondamento dos valores publicados, mas isso não comprova sozinho que essa é a causa nem exclui toda diferença metodológica."*
 
-**Controlou escopo ativamente.** Recusou que eu implementasse um calendário próprio de feriados,
-recusou adicionar o alerta de variação do dólar naquele momento (*"podemos registrar como
-melhoria"*) e mandou manter pendências documentadas em vez de resolvê-las ampliando o projeto.
+**Validou executando, e não lendo.** Esta foi a parte mais produtiva do direcionamento dele. Ele
+rodou o pipeline, os testes, os dois scripts de conferência e o dashboard no próprio ambiente, e
+colou as saídas. **Três defeitos do projeto foram encontrados assim, nenhum deles por mim** (ver
+seção 5). Num dos casos ele rodou o pipeline **duas vezes** — algo que eu não havia pedido — e as
+duas execuções produziram contagens idênticas, o que é a evidência de idempotência da carga que
+hoje consta no README.
+
+**Controlou escopo ativamente, até o fim.** Recusou que eu implementasse um calendário próprio de
+feriados, recusou adicionar o alerta de variação do dólar naquele momento (*"podemos registrar
+como melhoria"*), e na etapa final determinou a sequência: *"Depois que eu enviar os resultados,
+corrija apenas eventuais problemas encontrados. Se tudo passar, revisamos o estado final do
+README e eu reenvio o prompt exigido no PDF"*.
 
 **Proibiu explicitamente que eu fabricasse o histórico de colaboração:** *"Não invente
 questionamentos, validações ou participação minha"* e *"Não fabrique um histórico de
 desenvolvimento depois de concluir tudo"*. Esta seção existe sob essa restrição.
 
-**Um episódio sobre este próprio relatório, no último minuto do projeto.** Ele chegou a pedir
-que alterássemos o prompt prescrito no case: *"prefiro que a gente altere o prompt de comando
-para realização do IA.md"*. Eu apontei o risco — o case prescreve o prompt e manda salvar a
-resposta "sem editar", e o critério de avaliação diz "IA.md gerado conforme instruído" — e
-separei o que seria ajuste de método do que seria editar o relatório por via indireta. Ele então
-enviou o prompt **literalmente como está no PDF**, sem nenhuma alteração. Registro porque é
-decisão dele e porque é o tipo de coisa que um relatório embelezado omitiria.
+**Um episódio sobre este próprio relatório.** Ele chegou a pedir que alterássemos o prompt
+prescrito no case: *"prefiro que a gente altere o prompt de comando para realização do IA.md"*.
+Eu apontei o risco — o case prescreve o prompt e manda salvar a resposta "sem editar", e o
+critério de avaliação diz "IA.md gerado conforme instruído" — e separei o que seria ajuste de
+método do que seria editar o relatório por via indireta. Ele então enviou o prompt
+**literalmente como está no PDF**, sem nenhuma alteração, nas duas vezes em que o relatório foi
+gerado. Registro porque é decisão dele e porque é o tipo de coisa que um relatório embelezado
+omitiria.
 
 **Onde o direcionamento foi mais fraco:** ele delegou a mim quase toda a arquitetura de código
 (divisão de módulos, esquema do banco, estrutura dos testes) sem pedir alternativas. Em geral
@@ -91,20 +103,15 @@ entender a causa antes de alterar o código."* Foi assim que apareceu a falha de
 extração do dólar, e foi um teste feito por ele — não por mim — que refutou minha hipótese
 principal.
 
-**3. Implementar o CDI sob restrições explícitas.** Autorizou extração, cálculos e testes com
-dados controlados, mas com seis condições numeradas, entre elas: identificar na interface como
-*"Série SGS 12 — identificação como CDI pendente"* enquanto os metadados não fossem confirmados;
-usar tolerância conservadora na comparação com a série 4389; descrever a checagem de lacunas
-como detecção de interrupção prolongada, "sem certificar completude"; não implementar calendário
-de feriados; e escrever *"aproximadamente 0,25 p.p."* na mudança de taxa.
+**3. Implementar CDI e IPCA apenas sob confirmação oficial e com restrições numeradas.** Para o
+CDI: identificar na interface como *"Série SGS 12 — identificação como CDI pendente"* enquanto
+os metadados não fossem confirmados; tolerância conservadora na comparação com a série 4389;
+descrever a checagem de lacunas como detecção de interrupção prolongada, *"sem certificar
+completude"*; não implementar calendário de feriados; escrever *"aproximadamente 0,25 p.p."*.
+Para o IPCA: *"Adote 'IPCA — variação mensal', desde que a página oficial encontrada associe
+explicitamente o código 433 a essa série. Registre o link e a data da consulta no README."*
 
-**4. Confirmar o IPCA em fonte oficial antes de qualquer código.** *"Adote 'IPCA — variação
-mensal', desde que a página oficial encontrada associe explicitamente o código 433 a essa série.
-Registre o link e a data da consulta no README."* Também definiu como tratar desatualização:
-preferia o calendário oficial do IBGE, mas aceitou provisoriamente a regra de dois meses se
-consultá-lo ampliasse demais o escopo — identificando o alerta como *"possível defasagem"*.
-
-**5. Aprovar o Ibovespa, as comparações e o filtro de período, com condições.** Autorizou a
+**4. Aprovar o Ibovespa, as comparações e o filtro de período, com condições.** Autorizou a
 extração do Ibovespa preservando os valores recebidos e sinalizando atípicos sem descartar;
 exigiu conferir os fechamentos em fonte independente, preferencialmente a B3; mandou analisar os
 cinco anos antes de propor um limite de variação, mas *"não calibre a regra apenas para separar
@@ -113,6 +120,14 @@ atípicos observados na fonte, em investigação"*, **sem atribuir causa políti
 falha do fornecedor**. Na mesma linha aprovou a base 100 sem alinhamento de datas, a comparação
 mensal por meses inteiros com o último mês elegível saindo dos dados, e os cartões independentes
 do filtro.
+
+**5. Fazer a validação final de ponta a ponta e a revisão do README.** Rodou tudo no ambiente
+dele, exigiu que eu explicasse o resultado da suíte com precisão (*"quantos testes passaram e o
+que representa esse 1? Se houver teste ignorado, aviso ou falha, identifique e explique o
+impacto"*), mandou enfraquecer uma conclusão minha sobre dezembro de 2022, e **especificou ele
+mesmo os cinco itens do checklist do dashboard** — quatro indicadores e datas, filtros, base 100
+na mesma data, comparação mensal e retorno real, avisos e comportamento sem dados suficientes.
+Este pedido encontrou três defeitos (seção 5).
 
 ---
 
@@ -184,6 +199,20 @@ calendário correspondente — e recusou que eu implementasse esse calendário n
 política, econômica ou falha do fornecedor"* enquanto não houvesse confirmação. A lembrança dele
 de um evento ajudou a investigação, mas ele próprio disse que *"não encerra a validação"*.
 
+**Enfraqueceu uma conclusão minha sobre dezembro de 2022 — e tinha razão.** Depois que o
+`verify_ipca` mostrou uma janela dentro da tolerância que não arredonda para o valor publicado,
+eu escrevi no README que *"não é divergência metodológica, é arredondamento de publicação"*. Ele
+corrigiu: o desvio é **compatível** com arredondamento, mas isso não comprova a causa nem exclui
+diferença metodológica. Eu havia afirmado origem a partir de magnitude — o mesmo erro que ele já
+havia corrigido no round-trip e na coerência abertura/fechamento, agora na terceira forma.
+
+**Exigiu precisão onde eu havia abreviado.** Eu reportei o resultado da suíte como "320/1". Ele
+não aceitou o atalho: *"quantos testes passaram e o que representa esse 1? Se houver teste
+ignorado, aviso ou falha, identifique e explique o impacto."* Fui investigar e encontrei, além
+do teste pulado, **seis avisos que eu não sabia que existiam** — e, procurando a origem deles,
+um defeito real de produção no `app.py` (seção 5). Esse defeito só foi encontrado porque ele
+recusou um número abreviado.
+
 **Me corrigiu sobre fabricar histórico.** Deixou claro que o IA.md seria gerado só ao final, com
 o prompt do case, e que eu não deveria inventar acontecimentos para preenchê-lo nem inventar
 participação dele. Este relatório obedece a isso: tudo aqui aconteceu.
@@ -209,8 +238,10 @@ participação dele. Este relatório obedece a isso: tudo aqui aconteceu.
 - Eixo vertical ajustado à faixa do período; título "Dólar americano (venda)" com a fonte abaixo.
 - Preservar os valores recebidos do yfinance sem substituir nem descartar.
 - Analisar os 5 anos antes de propor o limite de variação, sem calibrar para os eventos conhecidos.
+- A sequência da validação final, e os **cinco itens do checklist do dashboard**, que ele especificou.
+- Rodar o pipeline duas vezes — o que produziu a evidência de idempotência que está no README.
 - Todo o processo de commits e publicação; o padrão das mensagens de commit.
-- Gerar o IA.md apenas ao final, com o prompt do case, sem fabricar histórico.
+- Gerar o IA.md apenas ao final, com o prompt do case **sem alteração**, sem fabricar histórico.
 
 **Sugerido por mim e aceito sem alteração:**
 
@@ -224,7 +255,7 @@ participação dele. Este relatório obedece a isso: tudo aqui aconteceu.
 - Limite de lacuna **por série** (10 dias nas diárias, 40 na mensal), com o alcance da regra declarado.
 - O script de inspeção da base e a sugestão do DB Browser for SQLite.
 - Cores fixas por indicador, validadas para daltonismo e contraste; eixo de datas com granularidade de dia.
-- A estrutura e o nível de detalhe do README.
+- A estrutura e o nível de detalhe do README, incluindo a seção que justifica cada escolha do dashboard.
 
 **Ressalva honesta sobre esta divisão:** "aceito sem alteração" é raro no histórico. A maior
 parte das minhas propostas foi aceita **com condições** — e as condições costumavam ser
@@ -235,37 +266,76 @@ contém o que passou sem emenda; ela é menor do que a lista do que foi emendado
 
 ## 5. Pontos de atenção
 
-Coisas que eu posso ter errado, ou que já errei e merecem conferência humana.
+Coisas que eu errei ou posso ter errado, e que merecem conferência humana.
 
-**Um padrão meu que se repetiu três vezes: extrapolar de um único ponto de dado.** Previ que o
-máximo do dólar estaria em dezembro de 2024 (era 02/01/2025); previ desvio máximo de ordem
-10⁻⁵ no script de conferência do CDI (foi 1,4 × 10⁻⁴); e derivei uma tolerância a partir de um
-só nível de taxa. **Trate qualquer número que eu tenha previsto, estimado ou "esperado" como não
-verificado até ser medido.**
+### Um padrão meu: afirmar mais do que a evidência sustenta
 
-**Outro padrão: meus dublês de teste foram mais permissivos que a fonte real — três vezes.** Foi
-a causa de 43 testes passarem enquanto a produção falhava. Corrigido nos três casos (recusas do
-SGS, defasagem do CDI, yfinance), mas é um ponto cego meu: **o teste passar não prova que a
-fonte se comporta como o teste supõe.**
+Aconteceu em duas formas, repetidamente.
 
-**Eu introduzi pelo menos um bug no final do projeto.** Ao traduzir os rótulos de mês de
-`2025-11` para `11/2025`, quebrei a ordenação do gráfico de barras — a biblioteca passou a
-ordenar alfabeticamente, agrupando todos os janeiros. Só foi detectado porque ele olhou as
-capturas de tela. Antes disso, uma mutação que eu mesmo introduzi para testar (UTC em vez do
-fuso de São Paulo) **não foi detectada** pelos meus testes, porque eu os havia escrito só com
-horários de meia-noite.
+**Extrapolar de um único ponto de dado.** Previ que o máximo do dólar estaria em dezembro de
+2024 (era 02/01/2025); previ desvio máximo de ordem 10⁻⁵ no script de conferência do CDI (foi
+1,4 × 10⁻⁴); derivei uma tolerância a partir de um só nível de taxa. E, no fim do projeto, o
+caso mais claro: eu havia escrito no README que o `verify_ipca` comparou **10 janelas** e que
+**todos** os valores calculados arredondavam para o publicado. Quando o script rodou sobre a
+janela completa, foram **60 janelas** e **um** não arredonda. A afirmação forte vinha de uma
+amostra seis vezes menor e não sobreviveu ao aumento da amostra.
+**Trate qualquer número que eu tenha previsto, estimado ou "esperado" como não verificado até
+ser medido.**
 
-**Dei um comando de PowerShell que não funciona.** Usei escape de aspas inválido no PowerShell e
-um `>` que o shell interpreta como redirecionamento. Comandos que eu forneço para Windows
-merecem conferência antes de serem colados.
+**Afirmar causa a partir de magnitude.** O round-trip da anualização, a coerência
+abertura/fechamento do Ibovespa e a conclusão sobre dezembro de 2022 são o mesmo erro em três
+formas: um número compatível com uma explicação não estabelece essa explicação. Nos três casos
+foi ele quem corrigiu.
 
-**O README estava factualmente errado até a revisão final.** O bloco de estado, a primeira coisa
-que um avaliador lê, dizia que o IPCA e o Ibovespa "ainda não entraram" muito depois de os dois
-estarem funcionando; a contagem de testes dizia 196 quando eram 315; a tabela de arquivos
-omitia seis módulos. Isso não foi um erro de raciocínio, foi documentação que envelheceu sem
-que eu a revisasse — e só foi corrigido porque houve uma revisão final dedicada.
+### Meus testes passaram enquanto o código estava quebrado — quatro vezes
 
-**Pendências de identificação que o projeto NÃO resolveu, e que importam para a avaliação:**
+**Três vezes por dublê permissivo.** Meus dublês de teste eram mais permissivos que a fonte real
+(recusas do SGS, defasagem do CDI, comportamento do yfinance). Foi a causa de 43 testes passarem
+enquanto a produção falhava. Corrigidos, e hoje os dublês reproduzem as recusas reais.
+
+**Uma vez por ausência total de teste.** Na validação final, ele rodou `python -m
+scripts.verify_cdi` e o script quebrou com `TypeError`. Causa: os scripts de conferência
+montavam um objeto `Series` campo a campo, e quando `Series` ganhou um campo obrigatório o
+script passou a quebrar — **com a suíte inteira verde**, porque só a função pura de comparação
+tinha teste e a função que monta o pedido não tinha nenhum. Corrigido com `dataclasses.replace`
+e três testes novos, verificados por mutação. **O defeito foi encontrado por ele rodando o
+comando, não pelo pytest.**
+
+Na mesma investigação eu afirmei que *os dois* scripts de conferência tinham o mesmo defeito.
+Errado: só o do CDI estava quebrado; o do IPCA passava o campo. Eu generalizei antes de abrir o
+segundo arquivo.
+
+### Dois defeitos meus encontrados nos últimos minutos
+
+**Vazamento de conexão no dashboard.** O `app.py` fechava a conexão SQLite **dentro** do `try`:
+num erro de leitura, o `close()` nunca executava, e o Streamlit reexecuta o script a cada
+interação do usuário. Corrigido com `finally` e teste verificado por mutação. **Só apareceu
+porque ele exigiu que eu explicasse os avisos da suíte** em vez de aceitar meu "320/1".
+
+**Uma frase órfã que eu mesmo criei.** Numa edição do README eu desgarrei um parágrafo sobre os
+dublês de teste, que terminou colado ao fim de um item sobre um aviso do pandas, onde não fazia
+sentido. Só foi encontrado na leitura integral do documento. Mostra que minhas edições pontuais
+em documentos longos podem produzir incoerências que eu não detecto sem reler tudo.
+
+**Dei um comando de PowerShell que não funciona** (escape de aspas inválido e um `>` que o shell
+interpreta como redirecionamento). Comandos que eu forneço para Windows merecem conferência antes
+de serem colados.
+
+### Coisas que ficaram sem explicação
+
+**Uma gravação de arquivo que não chegou.** Numa etapa, o `pytest` dele coletou 319 testes
+enquanto o meu coletava 321 — o arquivo de testes gravado no computador dele estava na versão
+anterior, embora a ferramenta tenha reportado sucesso. Reenviar resolveu. **A causa não foi
+determinada.** Se houver qualquer dúvida sobre que versão de um arquivo está no repositório,
+confira o conteúdo em vez de confiar no meu relato.
+
+**Uma resposta não-JSON do SGS.** Uma execução do `verify_ipca` falhou e a seguinte, minutos
+depois, completou. A causa não foi determinada, e a evidência se perdeu porque a mensagem de
+erro daquela versão não incluía o corpo da resposta — o mesmo ponto cego do "HTTP 400" sem
+corpo, que ele já havia me feito corrigir em outro ramo do código e que eu deixei aberto
+neste. A mensagem foi melhorada para uma próxima ocorrência.
+
+### Pendências de identificação que o projeto NÃO resolveu
 
 - A **série 12 não foi confirmada como CDI** por metadado oficial. O portal do SGS respondeu
   "Requisição inválida" em todas as tentativas e a página de metadados de juros do BCB documenta
@@ -277,27 +347,34 @@ que eu a revisasse — e só foi corrigido porque houve uma revisão final dedic
   noite de D para o dia útil seguinte) segue sem resolução. Errar isso desloca o acumulado em
   uma observação, cerca de 0,06 p.p. no nível atual.
 
-**Verificações que não foram feitas:**
+### Verificações que não foram feitas
 
 - O movimento de **+7,70% em 05/10/2026** no Ibovespa nunca foi conferido em fonte independente
   (o de −13,88% em 26/10 foi, e está correto).
 - As **8 datas divergentes** entre dólar e Ibovespa não foram conferidas contra o calendário
   oficial da B3.
 - O **limite de 10%** de variação do Ibovespa não foi derivado da distribuição dos 5 anos, e sua
-  referência vem de fonte secundária, não da norma da B3.
+  referência vem de fonte secundária, não da norma da B3. Ele gerou um único alerta em 1.248
+  pregões, o que mostra poucos alertas nessa amostra e nada além disso.
 - O **calendário oficial de divulgação do IBGE** não foi consultado; a regra de defasagem é uma
   aproximação que gera falso alerta previsível todo começo de mês.
 - O script **`scripts/verify_ptax.py` nunca foi executado** e o endereço da API Olinda nunca foi
-  conferido na documentação. Ele está no repositório como esqueleto, e isso está dito no README.
+  conferido na documentação. Ele está no repositório como esqueleto, e isso está dito no README,
+  que também o deixa fora da lista de comandos executáveis.
+- A **janela de dezembro de 2022** no `verify_ipca` fica dentro da tolerância sem arredondar para
+  o valor publicado. Isso é compatível com arredondamento de publicação, mas a causa não foi
+  estabelecida e diferença metodológica não está excluída.
 
-**A limitação estrutural mais importante, e ela é real:** a checagem de cobertura detecta
-interrupção prolongada da fonte, **não ausência isolada**. Numa série diária, um dia útil
-faltando produz lacuna de 2 dias e passa sem alarme, subestimando o acumulado de 12 meses em
-cerca de 0,05 p.p. Passar na validação **não** significa que a série está completa. A
-completude do dólar foi conferida uma vez, por inspeção humana sobre um retrato — não se repete
-sozinha nas próximas execuções.
+### A limitação estrutural mais importante, e ela é real
 
-**Por último, sobre este relatório:** ele foi escrito sobre um histórico parcialmente resumido
-(ver a nota de método no início). Os episódios relatados aconteceram, mas se houver dúvida sobre
-algum detalhe, a fonte mais confiável é o histórico de commits e os arquivos do repositório, não
-a minha memória da conversa.
+A checagem de cobertura detecta interrupção prolongada da fonte, **não ausência isolada**. Numa
+série diária, um dia útil faltando produz lacuna de 2 dias e passa sem alarme, subestimando o
+acumulado de 12 meses em cerca de 0,05 p.p. **Passar na validação não significa que a série está
+completa.** A completude do dólar foi conferida uma vez, por inspeção humana sobre um retrato —
+não se repete sozinha nas próximas execuções.
+
+### Sobre este relatório
+
+Ele foi escrito sobre um histórico parcialmente resumido (ver a nota de método no início). Os
+episódios relatados aconteceram, mas se houver dúvida sobre algum detalhe, a fonte mais
+confiável é o histórico de commits e os arquivos do repositório, não a minha memória da conversa.
