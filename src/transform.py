@@ -31,6 +31,7 @@ def clean_sgs(
     reject_non_positive: bool,
     alert_min: float | None = None,
     alert_max: float | None = None,
+    alert_max_change_pct: float | None = None,
 ) -> tuple[pd.DataFrame, dict]:
     """Recebe 'data' (dd/MM/aaaa) e 'valor' (texto). Devolve (dados limpos, relatório).
 
@@ -72,11 +73,24 @@ def clean_sgs(
     df = df.sort_values("ref_date")
 
     # --- 3. atípico: CARREGA, conta e sinaliza --------------------------------
-    atypical = pd.Series(False, index=df.index)
+    # Duas regras independentes. A de NÍVEL pega um valor implausível em si; a de
+    # VARIAÇÃO pega um valor plausível sozinho que destoa do anterior. Nenhuma das
+    # duas descarta nada: ambas pedem revisão humana, não declaram erro.
+    by_level = pd.Series(False, index=df.index)
     if alert_min is not None:
-        atypical |= df["value"] < alert_min
+        by_level |= df["value"] < alert_min
     if alert_max is not None:
-        atypical |= df["value"] > alert_max
+        by_level |= df["value"] > alert_max
+
+    by_change = pd.Series(False, index=df.index)
+    if alert_max_change_pct is not None and len(df) > 1:
+        variacao = df["value"].pct_change() * 100.0
+        by_change = variacao.abs() > alert_max_change_pct
+        by_change = by_change.fillna(False)  # a primeira observação não tem anterior
+
+    atypical = by_level | by_change
+    report["atypical_level"] = int(by_level.sum())
+    report["atypical_change"] = int(by_change.sum())
     report["atypical"] = int(atypical.sum())
     report["atypical_sample"] = [
         {"ref_date": d.strftime("%Y-%m-%d"), "value": float(v)}
