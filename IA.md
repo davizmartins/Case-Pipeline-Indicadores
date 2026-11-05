@@ -1,8 +1,10 @@
 # IA.md — Relatório sobre o uso de inteligência artificial
 
 **Ferramenta:** Claude (Claude Code / modelo `claude-opus-5`), em uma única conversa.
-**Gerado em:** 01/11/2026, ao final do desenvolvimento, a partir do prompt do case enviado
-literalmente pelo próprio usuário nesta conversa.
+**Gerado em:** 05/11/2026, a partir do prompt do case enviado literalmente pelo próprio usuário
+nesta conversa. É uma regeração: uma versão anterior, de 01/11/2026, não incluía o episódio da
+conferência de entrega descrito na seção 5 — episódio que só existiu porque ele se recusou a
+entregar sem verificar.
 
 ## Nota de método (leia antes do resto)
 
@@ -57,10 +59,18 @@ a sustentava ainda. Exemplos textuais dele:
 
 **Validou executando, e não lendo.** Esta foi a parte mais produtiva do direcionamento dele. Ele
 rodou o pipeline, os testes, os dois scripts de conferência e o dashboard no próprio ambiente, e
-colou as saídas. **Três defeitos do projeto foram encontrados assim, nenhum deles por mim** (ver
-seção 5). Num dos casos ele rodou o pipeline **duas vezes** — algo que eu não havia pedido — e as
-duas execuções produziram contagens idênticas, o que é a evidência de idempotência da carga que
-hoje consta no README.
+colou as saídas. **Quatro defeitos do projeto foram encontrados assim, nenhum deles por mim**
+(ver seção 5). Num dos casos ele rodou o pipeline **duas vezes** — algo que eu não havia pedido —
+e as duas execuções produziram contagens idênticas, o que é a evidência de idempotência da carga
+que hoje consta no README.
+
+**Não aceitou "está pronto" como resposta — e foi isso que salvou a entrega.** No dia da
+submissão, com o repositório que eu havia declarado completo duas vezes, ele não entregou: ele
+perguntou *"vou entregar o repositório, ele está correto?"*. A conferência que essa pergunta
+provocou encontrou o `IA.md` da raiz do repositório na **versão penúltima** — faltando a seção 5
+inteira dos episódios finais. Se ele tivesse aceitado minha palavra, teria entregado o relatório
+errado. O detalhe completo está na seção 5; registro aqui porque é um traço de como ele conduz,
+não um acidente isolado.
 
 **Controlou escopo ativamente, até o fim.** Recusou que eu implementasse um calendário próprio de
 feriados, recusou adicionar o alerta de variação do dólar naquele momento (*"podemos registrar
@@ -77,7 +87,7 @@ prescrito no case: *"prefiro que a gente altere o prompt de comando para realiza
 Eu apontei o risco — o case prescreve o prompt e manda salvar a resposta "sem editar", e o
 critério de avaliação diz "IA.md gerado conforme instruído" — e separei o que seria ajuste de
 método do que seria editar o relatório por via indireta. Ele então enviou o prompt
-**literalmente como está no PDF**, sem nenhuma alteração, nas duas vezes em que o relatório foi
+**literalmente como está no PDF**, sem nenhuma alteração, nas três vezes em que o relatório foi
 gerado. Registro porque é decisão dele e porque é o tipo de coisa que um relatório embelezado
 omitiria.
 
@@ -121,13 +131,15 @@ falha do fornecedor**. Na mesma linha aprovou a base 100 sem alinhamento de data
 mensal por meses inteiros com o último mês elegível saindo dos dados, e os cartões independentes
 do filtro.
 
-**5. Fazer a validação final de ponta a ponta e a revisão do README.** Rodou tudo no ambiente
-dele, exigiu que eu explicasse o resultado da suíte com precisão (*"quantos testes passaram e o
-que representa esse 1? Se houver teste ignorado, aviso ou falha, identifique e explique o
-impacto"*), mandou enfraquecer uma conclusão minha sobre dezembro de 2022, e **especificou ele
-mesmo os cinco itens do checklist do dashboard** — quatro indicadores e datas, filtros, base 100
-na mesma data, comparação mensal e retorno real, avisos e comportamento sem dados suficientes.
-Este pedido encontrou três defeitos (seção 5).
+**5. Verificar antes de aceitar — duas vezes, e as duas acharam defeito.** Primeiro a validação
+final de ponta a ponta: rodou tudo no ambiente dele, exigiu que eu explicasse o resultado da
+suíte com precisão (*"quantos testes passaram e o que representa esse 1? Se houver teste
+ignorado, aviso ou falha, identifique e explique o impacto"*), mandou enfraquecer uma conclusão
+minha sobre dezembro de 2022, e **especificou ele mesmo os cinco itens do checklist do
+dashboard** — quatro indicadores e datas, filtros, base 100 na mesma data, comparação mensal e
+retorno real, avisos e comportamento sem dados suficientes. Depois, dias mais tarde, a
+conferência de entrega: *"vou entregar o repositório, ele está correto?"* em vez de entregar.
+Estes dois pedidos encontraram quatro defeitos, listados na seção 5.
 
 ---
 
@@ -213,6 +225,11 @@ do teste pulado, **seis avisos que eu não sabia que existiam** — e, procurand
 um defeito real de produção no `app.py` (seção 5). Esse defeito só foi encontrado porque ele
 recusou um número abreviado.
 
+**Não aceitou minha declaração de que o repositório estava pronto.** Eu havia escrito, em duas
+mensagens diferentes, que os quatro entregáveis estavam no repositório. Ele não entregou com
+base nisso: perguntou se estava correto. A conferência achou o `IA.md` errado na raiz. A recusa
+em aceitar minha palavra foi, nesse caso, a última linha de defesa do projeto.
+
 **Me corrigiu sobre fabricar histórico.** Deixou claro que o IA.md seria gerado só ao final, com
 o prompt do case, e que eu não deveria inventar acontecimentos para preenchê-lo nem inventar
 participação dele. Este relatório obedece a isso: tudo aqui aconteceu.
@@ -240,6 +257,8 @@ participação dele. Este relatório obedece a isso: tudo aqui aconteceu.
 - Analisar os 5 anos antes de propor o limite de variação, sem calibrar para os eventos conhecidos.
 - A sequência da validação final, e os **cinco itens do checklist do dashboard**, que ele especificou.
 - Rodar o pipeline duas vezes — o que produziu a evidência de idempotência que está no README.
+- **Conferir o repositório antes de entregar**, em vez de aceitar minha declaração de que estava completo.
+- Não implementar o bônus de atualização incremental, mantendo-o documentado como não implementado.
 - Todo o processo de commits e publicação; o padrão das mensagens de commit.
 - Gerar o IA.md apenas ao final, com o prompt do case **sem alteração**, sem fabricar histórico.
 
@@ -268,17 +287,40 @@ contém o que passou sem emenda; ela é menor do que a lista do que foi emendado
 
 Coisas que eu errei ou posso ter errado, e que merecem conferência humana.
 
+### O erro mais grave: declarei pronto um repositório que estava errado
+
+No dia da entrega, o `IA.md` **na raiz do repositório** era a versão penúltima, de 304 linhas,
+sem a seção 5 dos episódios finais. A versão correta, de 381 linhas, estava numa pasta de
+resíduo (`Claude outputs/`) que nem fazia parte do projeto. Eu havia escrito, em duas mensagens
+diferentes, que os quatro entregáveis estavam no repositório — **sem ter lido de volta o arquivo
+gravado**.
+
+O defeito foi encontrado porque ele perguntou se estava correto em vez de entregar. A
+conferência que fiz então comparou os 37 arquivos do disco dele com as minhas cópias e leu o
+`IA.md` de volta: os outros 36 estavam certos, esse não.
+
+Há uma ironia que vale registrar, porque é verificável: a versão anterior deste mesmo relatório
+já continha a frase *"Se houver qualquer dúvida sobre que versão de um arquivo está no
+repositório, confira o conteúdo em vez de confiar no meu relato."* Essa recomendação existia por
+causa de um incidente anterior, e foi exatamente o procedimento que ela descreve que impediu a
+entrega errada. **A recomendação se provou dentro do próprio arquivo que a contém.**
+
+**A causa não foi determinada.** A ferramenta de gravação reportou sucesso nas duas ocasiões. A
+pasta está no OneDrive, o que é hipótese plausível e não causa verificada. Aconteceu **duas
+vezes** nesta pasta — ver abaixo. **Regra prática: não aceite meu relato sobre o conteúdo de um
+arquivo; abra o arquivo.**
+
 ### Um padrão meu: afirmar mais do que a evidência sustenta
 
-Aconteceu em duas formas, repetidamente.
+Aconteceu em três formas, repetidamente.
 
 **Extrapolar de um único ponto de dado.** Previ que o máximo do dólar estaria em dezembro de
 2024 (era 02/01/2025); previ desvio máximo de ordem 10⁻⁵ no script de conferência do CDI (foi
-1,4 × 10⁻⁴); derivei uma tolerância a partir de um só nível de taxa. E, no fim do projeto, o
-caso mais claro: eu havia escrito no README que o `verify_ipca` comparou **10 janelas** e que
-**todos** os valores calculados arredondavam para o publicado. Quando o script rodou sobre a
-janela completa, foram **60 janelas** e **um** não arredonda. A afirmação forte vinha de uma
-amostra seis vezes menor e não sobreviveu ao aumento da amostra.
+1,4 × 10⁻⁴); derivei uma tolerância a partir de um só nível de taxa. E o caso mais limpo: eu
+havia escrito no README que o `verify_ipca` comparou **10 janelas** e que **todos** os valores
+calculados arredondavam para o publicado. Quando o script rodou sobre a janela completa, foram
+**60 janelas** e **um** não arredonda. A afirmação forte vinha de uma amostra seis vezes menor e
+não sobreviveu ao aumento da amostra.
 **Trate qualquer número que eu tenha previsto, estimado ou "esperado" como não verificado até
 ser medido.**
 
@@ -286,6 +328,10 @@ ser medido.**
 abertura/fechamento do Ibovespa e a conclusão sobre dezembro de 2022 são o mesmo erro em três
 formas: um número compatível com uma explicação não estabelece essa explicação. Nos três casos
 foi ele quem corrigiu.
+
+**Declarar estado sem verificar.** O caso do `IA.md` acima, e também: eu afirmei ter acesso à
+transcrição integral da conversa (não tinha) e afirmei que os dois scripts de conferência tinham
+o mesmo defeito (só um tinha — generalizei antes de abrir o segundo arquivo).
 
 ### Meus testes passaram enquanto o código estava quebrado — quatro vezes
 
@@ -301,11 +347,7 @@ tinha teste e a função que monta o pedido não tinha nenhum. Corrigido com `da
 e três testes novos, verificados por mutação. **O defeito foi encontrado por ele rodando o
 comando, não pelo pytest.**
 
-Na mesma investigação eu afirmei que *os dois* scripts de conferência tinham o mesmo defeito.
-Errado: só o do CDI estava quebrado; o do IPCA passava o campo. Eu generalizei antes de abrir o
-segundo arquivo.
-
-### Dois defeitos meus encontrados nos últimos minutos
+### Dois defeitos meus encontrados nos últimos minutos do desenvolvimento
 
 **Vazamento de conexão no dashboard.** O `app.py` fechava a conexão SQLite **dentro** do `try`:
 num erro de leitura, o `close()` nunca executava, e o Streamlit reexecuta o script a cada
@@ -323,11 +365,11 @@ de serem colados.
 
 ### Coisas que ficaram sem explicação
 
-**Uma gravação de arquivo que não chegou.** Numa etapa, o `pytest` dele coletou 319 testes
-enquanto o meu coletava 321 — o arquivo de testes gravado no computador dele estava na versão
-anterior, embora a ferramenta tenha reportado sucesso. Reenviar resolveu. **A causa não foi
-determinada.** Se houver qualquer dúvida sobre que versão de um arquivo está no repositório,
-confira o conteúdo em vez de confiar no meu relato.
+**Duas gravações de arquivo que não chegaram, com a ferramenta reportando sucesso.** A primeira:
+o `pytest` dele coletou 319 testes enquanto o meu coletava 321, porque o arquivo de testes
+gravado no computador dele estava na versão anterior. A segunda: o `IA.md` da raiz, descrito
+acima, que quase foi entregue errado. Nos dois casos reenviar resolveu e **a causa não foi
+determinada**.
 
 **Uma resposta não-JSON do SGS.** Uma execução do `verify_ipca` falhou e a seguinte, minutos
 depois, completou. A causa não foi determinada, e a evidência se perdeu porque a mensagem de
@@ -378,3 +420,5 @@ não se repete sozinha nas próximas execuções.
 Ele foi escrito sobre um histórico parcialmente resumido (ver a nota de método no início). Os
 episódios relatados aconteceram, mas se houver dúvida sobre algum detalhe, a fonte mais
 confiável é o histórico de commits e os arquivos do repositório, não a minha memória da conversa.
+E, pelas razões da primeira subseção desta seção: **confira que este arquivo, no repositório,
+tem o mesmo conteúdo que eu digo que tem.**
