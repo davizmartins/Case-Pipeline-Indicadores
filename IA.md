@@ -14,7 +14,7 @@ metade. O que tenho é (a) um resumo automático que preserva as mensagens do us
 íntegra e registra os erros e correções ocorridos, (b) os turnos finais em texto literal, e
 (c) o repositório e seus commits.
 
-Numa mensagem anterior a este relatório eu afirmei ao Armindo que tinha "acesso ao arquivo de
+Numa mensagem anterior a este relatório eu afirmei ao Davi que tinha "acesso ao arquivo de
 transcrição integral desta sessão". **Isso estava errado** — fui conferir o arquivo e ele começa
 no ponto da compactação. Ele foi informado antes de eu escrever. Registro aqui porque é
 exatamente o tipo de afirmação confiante e não verificada que este relatório deve expor, e
